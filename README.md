@@ -39,7 +39,7 @@ Backend API documentation: http://localhost:8000/docs (while running).
 ## Progress
 
 - [x] Week 1: login, roles, school group > school > branch
-- [ ] Week 2: students, staff, families, sessions, terms, classes, subjects
+- [x] Week 2: students, staff, families, sessions, terms, classes, subjects, editing schools and branches
 - [ ] Week 3: attendance (works offline)
 - [ ] Week 4: scores and report cards
 - [ ] Week 5: fees ledger

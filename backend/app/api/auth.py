@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import current_user
 from app.core.db import get_db
+from app.core.phone import looks_like_phone, normalize_phone
 from app.core.security import create_access_token, verify_password
 from app.models import Role, User
 
@@ -42,7 +43,8 @@ class MeOut(BaseModel):
 def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)) -> Token:
     """Log in with an email address or phone number, plus password."""
     identifier = form.username.strip().lower()
-    user = db.scalar(select(User).where(or_(User.email == identifier, User.phone == identifier)))
+    phone = normalize_phone(identifier) if looks_like_phone(identifier) else None
+    user = db.scalar(select(User).where(or_(User.email == identifier, User.phone == (phone or identifier))))
     if not user or not user.is_active or not verify_password(form.password, user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong email/phone or password")
     return Token(access_token=create_access_token(str(user.id)))
