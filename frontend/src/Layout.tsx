@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { Me } from "./api";
+import { dismissFailures, flushOutbox, useSyncStatus } from "./offline";
 
 export interface Crumb {
   label: string;
@@ -17,6 +18,7 @@ export default function Layout({
   crumbs: Crumb[];
   children: ReactNode;
 }) {
+  const sync = useSyncStatus();
   return (
     <div className="page">
       <header className="topbar">
@@ -24,10 +26,28 @@ export default function Layout({
           School Platform
         </a>
         <div className="topbar-right">
+          {!sync.online && <span className="sync-pill offline">Offline</span>}
+          {sync.pending.length > 0 && (
+            <button className="sync-pill waiting" onClick={() => void flushOutbox()} title={sync.pending.map((p) => p.label).join("\n")}>
+              {sync.syncing ? "Sending…" : `${sync.pending.length} to send`}
+            </button>
+          )}
           <span className="muted hide-small">{me.full_name}</span>
           <button onClick={onLogout}>Log out</button>
         </div>
       </header>
+      {sync.failed.length > 0 && (
+        <div className="banner banner-error">
+          <div>
+            {sync.failed.map((f, i) => (
+              <p key={i}>
+                <strong>Couldn't save {f.label}:</strong> {f.message}
+              </p>
+            ))}
+          </div>
+          <button className="ghost" onClick={dismissFailures}>Dismiss</button>
+        </div>
+      )}
       <main className="content">
         {crumbs.length > 0 && (
           <nav className="crumbs" aria-label="Breadcrumb">

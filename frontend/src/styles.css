@@ -164,3 +164,59 @@ legend { padding: 0 6px; font-weight: 600; font-size: 14px; }
   .content { padding: 16px 12px; }
   .toolbar .primary { margin-left: 0; width: 100%; }
 }
+
+/* ---- Week 3: attendance ---- */
+:root { --present: #0f7a4f; --absent: #d92d20; --late: #b07800; --excused: #3e63b8; }
+@media (prefers-color-scheme: dark) { :root { --present: #35b47e; --absent: #f97066; --late: #fdb022; --excused: #84a9ff; } }
+.c-present { color: var(--present); }
+.c-absent { color: var(--absent); }
+.c-late { color: var(--late); }
+.c-excused { color: var(--excused); }
+
+.sync-pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); }
+.sync-pill.offline { color: var(--absent); border-color: var(--absent); }
+.sync-pill.waiting { color: var(--late); border-color: var(--late); background: transparent; }
+.banner { padding: 10px 14px; border-radius: 8px; border: 1px solid var(--late); color: var(--text); background: var(--surface); font-size: 14px; }
+.banner-error { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; border-radius: 0; border-width: 0 0 1px; border-color: var(--danger); }
+
+.count-bar { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; font-weight: 600; margin: 4px 0 12px; }
+.mark-rest { width: 100%; margin-bottom: 10px; }
+.reg-list { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.reg-list li { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--border); border-left: 4px solid transparent; }
+.reg-list li:first-child { border-top: none; }
+.reg-list li.is-present { border-left-color: var(--present); }
+.reg-list li.is-absent { border-left-color: var(--absent); }
+.reg-list li.is-late { border-left-color: var(--late); }
+.reg-list li.is-excused { border-left-color: var(--excused); }
+.reg-name { display: flex; flex-direction: column; min-width: 0; }
+.reg-choices { display: flex; gap: 6px; }
+.choice { width: 44px; height: 44px; padding: 0; font-weight: 700; border-radius: 10px; }
+.choice.on { color: #fff; }
+.choice-present.on { background: var(--present); border-color: var(--present); }
+.choice-absent.on { background: var(--absent); border-color: var(--absent); }
+.choice-late.on { background: var(--late); border-color: var(--late); }
+.choice-excused.on { background: var(--excused); border-color: var(--excused); }
+@media (prefers-color-scheme: dark) { .choice.on { color: #0b1410; } }
+.reg-note { grid-column: 1 / -1; padding: 8px 10px; font-size: 14px; }
+.save-bar { position: sticky; bottom: 0; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; margin-top: 12px; background: var(--bg); border-top: 1px solid var(--border); }
+
+.progress { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--bg); border: 1px solid var(--border); }
+.progress span { display: block; height: 100%; }
+.p-present { background: var(--present); }
+.p-late { background: var(--late); }
+.p-excused { background: var(--excused); }
+.p-absent { background: var(--absent); }
+.big-stat { display: flex; align-items: baseline; gap: 8px; }
+.big-stat span:first-child { font-size: 32px; font-weight: 700; }
+
+@media (max-width: 600px) {
+  .choice { width: 40px; height: 40px; }
+  .reg-list li { padding: 10px; }
+}
+
+@media (max-width: 600px) {
+  .topbar { padding: 10px 12px; gap: 8px; }
+  .brand { white-space: nowrap; font-size: 15px; }
+  .topbar-right { gap: 6px; }
+  .sync-pill { padding: 3px 8px; white-space: nowrap; }
+}

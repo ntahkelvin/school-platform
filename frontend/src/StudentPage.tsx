@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   api, errorText,
-  type BranchDetail, type GuardianInput, type Me, type NewLogin, type SchoolClass, type StudentDetail,
+  type BranchDetail, type GuardianInput, type Me, type NewLogin, type SchoolClass, type StudentAttendance,
+  type StudentDetail,
 } from "./api";
 import Layout from "./Layout";
 import { href } from "./router";
@@ -80,6 +81,8 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
                 <dt>Branch</dt><dd>{branch.name}</dd>
               </dl>
             </section>
+
+            <AttendanceCard studentId={student.id} />
 
             <section className="card">
               <div className="card-head">
@@ -186,5 +189,52 @@ function AddGuardianForm({ onSubmit, onCancel }: { onSubmit: (g: GuardianInput) 
         <button type="button" onClick={onCancel}>Cancel</button>
       </div>
     </form>
+  );
+}
+
+const STATUS_LABEL = { present: "Present", absent: "Absent", late: "Late", excused: "Excused" } as const;
+
+function AttendanceCard({ studentId }: { studentId: string }) {
+  const [data, setData] = useState<StudentAttendance | null>(null);
+  useEffect(() => {
+    api.studentAttendance(studentId, 30).then(setData).catch(() => {});
+  }, [studentId]);
+  if (!data) return null;
+  const c = data.school;
+  return (
+    <section className="card">
+      <h2>Attendance, last 30 days</h2>
+      {c.marked === 0 ? (
+        <Empty>No registers taken yet.</Empty>
+      ) : (
+        <>
+          <div className="big-stat">
+            <span className={data.rate !== null && data.rate < 85 ? "c-absent" : "c-present"}>
+              {data.rate === null ? "n/a" : `${data.rate}%`}
+            </span>
+            <span className="muted small">attendance</span>
+          </div>
+          <p className="small">
+            {c.present} present · {c.late} late · {c.absent} absent · {c.excused} excused
+          </p>
+          {data.not_present.length > 0 && (
+            <ul className="list small">
+              {data.not_present.map((r, i) => (
+                <li key={i}>
+                  <span>
+                    {new Date(r.on_date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+                    {r.kind === "night" && <span className="muted"> (night)</span>}
+                  </span>
+                  <span>
+                    <span className={`c-${r.status}`}>{STATUS_LABEL[r.status]}</span>
+                    {r.note && <span className="muted"> · {r.note}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </section>
   );
 }

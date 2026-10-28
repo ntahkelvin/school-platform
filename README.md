@@ -34,13 +34,24 @@ Press Ctrl + C in the terminal to stop.
 | `backend/alembic/versions/` | Step-by-step changes to the database tables |
 | `frontend/` | The screens people see (React) |
 
+## Testing offline
+
+`./start.sh` is the development version, where offline saving works but the page itself
+needs the server to load. To try the finished version that also opens with no internet:
+
+```bash
+cd frontend && npm run build && npm run preview
+```
+
+Keep `./start.sh` running in another terminal for the backend, then open http://localhost:4173.
+
 Backend API documentation: http://localhost:8000/docs (while running).
 
 ## Progress
 
 - [x] Week 1: login, roles, school group > school > branch
 - [x] Week 2: students, staff, families, sessions, terms, classes, subjects, editing schools and branches
-- [ ] Week 3: attendance (works offline)
+- [x] Week 3: attendance registers and night roll call, working offline
 - [ ] Week 4: scores and report cards
 - [ ] Week 5: fees ledger
 - [ ] Week 6: parent app with child switcher

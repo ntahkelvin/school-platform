@@ -8,4 +8,9 @@ export default defineConfig({
     port: 5173,
     proxy: { "/api": "http://127.0.0.1:8000" },
   },
+  // "npm run preview" serves the finished build, the way the live app will run.
+  preview: {
+    port: 4173,
+    proxy: { "/api": "http://127.0.0.1:8000" },
+  },
 });

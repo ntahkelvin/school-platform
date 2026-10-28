@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { api, type Me } from "./api";
+import { cache } from "./offline";
 
 export default function Login({ onLoggedIn }: { onLoggedIn: (me: Me) => void }) {
   const [identifier, setIdentifier] = useState("");
@@ -17,7 +18,9 @@ export default function Login({ onLoggedIn }: { onLoggedIn: (me: Me) => void }) 
     setError("");
     try {
       await api.login(identifier.trim(), password);
-      onLoggedIn(await api.me());
+      const me = await api.me();
+      cache.set("me", me);
+      onLoggedIn(me);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not log in.");
     } finally {

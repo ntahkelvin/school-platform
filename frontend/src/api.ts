@@ -27,7 +27,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -176,6 +176,52 @@ export interface StaffMember {
   roles: { membership_id: string; role: StaffRole }[];
 }
 
+export type AttendanceStatus = "present" | "absent" | "late" | "excused";
+export type AttendanceKind = "school" | "night";
+
+export interface RegisterStudent {
+  id: string;
+  full_name: string;
+  admission_no: string;
+  class_name: string | null;
+  status: AttendanceStatus | null;
+  note: string | null;
+}
+export interface Register {
+  kind: AttendanceKind;
+  on_date: string;
+  title: string;
+  branch_id: string;
+  class_id: string | null;
+  students: RegisterStudent[];
+  last_saved_at: string | null;
+}
+export interface Counts {
+  total: number;
+  marked: number;
+  present: number;
+  absent: number;
+  late: number;
+  excused: number;
+}
+export interface DaySummary {
+  on_date: string;
+  classes: (Counts & { class_id: string; class_name: string })[];
+  school: Counts;
+  night: Counts | null;
+}
+export interface StudentAttendance {
+  days: number;
+  school: Counts;
+  rate: number | null;
+  not_present: { on_date: string; kind: AttendanceKind; status: AttendanceStatus; note: string | null }[];
+}
+
+/** Where a register lives on the server: used for loading and saving it. */
+export function registerPath(kind: AttendanceKind, id: string): string {
+  return kind === "school" ? `/api/classes/${id}/register` : `/api/branches/${id}/night-roll`;
+}
+
 export const api = {
   async login(identifier: string, password: string): Promise<void> {
     const body = new URLSearchParams({ username: identifier, password });
@@ -244,7 +290,22 @@ export const api = {
       role,
     }),
   removeStaffRole: (membershipId: string) => send<void>("DELETE", `/api/staff-roles/${membershipId}`),
+
+  register: (kind: AttendanceKind, id: string, date: string) => get<Register>(`${registerPath(kind, id)}?date=${date}`),
+  daySummary: (branchId: string, date: string) => get<DaySummary>(`/api/branches/${branchId}/attendance?date=${date}`),
+  studentAttendance: (studentId: string, days = 30) =>
+    get<StudentAttendance>(`/api/students/${studentId}/attendance?days=${days}`),
 };
+
+/** Today's date on this device, as YYYY-MM-DD (not UTC, so late evenings in Lagos don't jump a day). */
+export function todayLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export function longDate(iso: string): string {
+  return new Date(iso + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
 
 export const SCHOOL_TYPE_LABEL: Record<SchoolType, string> = {
   day: "Day school",
