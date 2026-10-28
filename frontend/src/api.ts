@@ -68,6 +68,8 @@ export interface Branch {
   id: string;
   name: string;
   address: string | null;
+  phone?: string | null;
+  email?: string | null;
   has_boarding: boolean;
 }
 export interface BranchDetail extends Branch {
@@ -80,10 +82,27 @@ export interface School {
   name: string;
   school_type: SchoolType;
   branches: Branch[];
+  motto?: string | null;
+  logo?: string | null;
+  campus_id?: string | null;
+  has_boarding?: boolean;
+  colour?: string | null;
+}
+
+export interface SchoolStats {
+  students: number;
+  boys: number;
+  girls: number;
+  boarders: number;
+  staff: number;
+  classes: number;
+  departments: number;
+  today: { in_classes: number; marked: number; present: number; absent: number };
 }
 export interface Group {
   id: string;
   name: string;
+  logo?: string | null;
   schools: School[];
 }
 export interface Me {
@@ -110,6 +129,7 @@ export interface Subject {
   id: string;
   name: string;
   code: string | null;
+  department_id: string | null;
 }
 export interface SchoolClass {
   id: string;
@@ -231,16 +251,17 @@ export const api = {
   me: () => get<Me>("/api/me"),
 
   groups: () => get<Group[]>("/api/groups"),
+  dashboardStats: (date: string) => get<Record<string, SchoolStats>>(`/api/dashboard-stats?date=${date}`),
   addSchool: (groupId: string, name: string, school_type: SchoolType) =>
     send<School>("POST", `/api/groups/${groupId}/schools`, { name, school_type }),
   school: (id: string) => get<School>(`/api/schools/${id}`),
   updateSchool: (id: string, name: string, school_type: SchoolType) =>
     send<School>("PATCH", `/api/schools/${id}`, { name, school_type }),
-  addBranch: (schoolId: string, name: string, address: string, has_boarding: boolean) =>
-    send<Branch>("POST", `/api/schools/${schoolId}/branches`, { name, address, has_boarding }),
+  addBranch: (schoolId: string, name: string, address: string, has_boarding: boolean, phone = "", email = "") =>
+    send<Branch>("POST", `/api/schools/${schoolId}/branches`, { name, address, has_boarding, phone, email }),
   branch: (id: string) => get<BranchDetail>(`/api/branches/${id}`),
-  updateBranch: (id: string, name: string, address: string, has_boarding: boolean) =>
-    send<BranchDetail>("PATCH", `/api/branches/${id}`, { name, address, has_boarding }),
+  updateBranch: (id: string, name: string, address: string, has_boarding: boolean, phone = "", email = "") =>
+    send<BranchDetail>("PATCH", `/api/branches/${id}`, { name, address, has_boarding, phone, email }),
 
   sessions: (schoolId: string) => get<AcademicSession[]>(`/api/schools/${schoolId}/sessions`),
   addSession: (schoolId: string, name: string) =>

@@ -63,3 +63,4 @@ class Subject(IdMixin, TimestampMixin, Base):
     school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(100))
     code: Mapped[str | None] = mapped_column(String(20))
+    department_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"))

@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -16,6 +16,8 @@ router = APIRouter(prefix="/api", tags=["schools"])
 class BranchIn(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     address: str | None = None
+    phone: str | None = Field(default=None, max_length=50)
+    email: str | None = Field(default=None, max_length=255)
     has_boarding: bool = False
 
 
@@ -37,13 +39,19 @@ class SchoolIn(BaseModel):
 
 class SchoolOut(SchoolIn):
     id: uuid.UUID
+    campus_id: uuid.UUID | None = None
+    has_boarding: bool = False
     branches: list[BranchOut]
+    motto: str | None = None
+    logo: str | None = None
+    colour: str | None = None
     model_config = {"from_attributes": True}
 
 
 class GroupOut(BaseModel):
     id: uuid.UUID
     name: str
+    logo: str | None = None
     schools: list[SchoolOut]
     model_config = {"from_attributes": True}
 
@@ -70,6 +78,9 @@ def add_school(
     owned_group(db, user, group_id)
     school = School(group_id=group_id, name=data.name.strip(), school_type=data.school_type)
     db.add(school)
+    db.flush()
+    # The school's one campus: where its classes, students, attendance and facilities live.
+    db.add(Branch(school_id=school.id, name=school.name, has_boarding=school.has_boarding))
     db.commit()
     db.refresh(school)
     return school
@@ -87,6 +98,9 @@ def update_school(
     school = owned_school(db, user, school_id)
     school.name = data.name.strip()
     school.school_type = data.school_type
+    for b in school.branches:
+        b.name = school.name
+        b.has_boarding = school.has_boarding
     db.commit()
     db.refresh(school)
     return school
@@ -97,10 +111,17 @@ def add_branch(
     school_id: uuid.UUID, data: BranchIn, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> Branch:
     school = owned_school(db, user, school_id)
+    if school.branches:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Each school is one site. To add another campus, create it as a new school in the organisation.",
+        )
     branch = Branch(
         school_id=school.id,
         name=data.name.strip(),
         address=(data.address or "").strip() or None,
+        phone=(data.phone or "").strip() or None,
+        email=(data.email or "").strip().lower() or None,
         has_boarding=data.has_boarding,
     )
     db.add(branch)
@@ -114,6 +135,8 @@ def _branch_detail(branch: Branch) -> BranchDetail:
         id=branch.id,
         name=branch.name,
         address=branch.address,
+        phone=branch.phone,
+        email=branch.email,
         has_boarding=branch.has_boarding,
         school_id=branch.school_id,
         school_name=branch.school.name,
@@ -133,6 +156,8 @@ def update_branch(
     branch = owned_branch(db, user, branch_id)
     branch.name = data.name.strip()
     branch.address = (data.address or "").strip() or None
+    branch.phone = (data.phone or "").strip() or None
+    branch.email = (data.email or "").strip().lower() or None
     branch.has_boarding = data.has_boarding
     db.commit()
     db.refresh(branch)

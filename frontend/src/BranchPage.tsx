@@ -6,12 +6,13 @@ import {
 import Layout from "./Layout";
 import { BranchForm } from "./forms";
 import AttendanceTab from "./AttendanceTab";
+import FacilitiesTab from "./FacilitiesTab";
 import { go, href, type BranchTab } from "./router";
 import StudentForm from "./StudentForm";
 import { Empty, Field, Modal, NewLoginNotice } from "./ui";
 
 type Tab = BranchTab;
-const TAB_LABEL: Record<Tab, string> = { students: "Students", classes: "Classes", staff: "Staff", attendance: "Attendance" };
+const TAB_LABEL: Record<Tab, string> = { students: "Students", classes: "Classes", staff: "Staff", attendance: "Attendance", facilities: "Facilities" };
 
 export default function BranchPage({
   me, onLogout, branchId, tab,
@@ -32,7 +33,7 @@ export default function BranchPage({
 
   const crumbs = [
     { label: "Home", href: "#/" },
-    ...(branch ? [{ label: branch.school_name, href: href({ page: "school", id: branch.school_id }) }] : []),
+    ...(branch ? [{ label: branch.school_name, href: href({ page: "school", id: branch.school_id, tab: "overview" }) }] : []),
     { label: branch?.name ?? "Branch" },
   ];
 
@@ -58,8 +59,8 @@ export default function BranchPage({
                 initial={branch}
                 submitLabel="Save changes"
                 onCancel={() => setEditing(false)}
-                onSubmit={async (name, address, boarding) => {
-                  setBranch(await api.updateBranch(branch.id, name, address, boarding));
+                onSubmit={async (name, address, boarding, phone, email) => {
+                  setBranch(await api.updateBranch(branch.id, name, address, boarding, phone, email));
                   setEditing(false);
                 }}
               />
@@ -67,7 +68,7 @@ export default function BranchPage({
           )}
 
           <nav className="tabs" role="tablist">
-            {(["students", "attendance", "classes", "staff"] as Tab[]).map((t) => (
+            {(["students", "attendance", "classes", "staff", "facilities"] as Tab[]).map((t) => (
               <a key={t} role="tab" aria-selected={tab === t} className={tab === t ? "active" : ""}
                  href={href({ page: "branch", id: branch.id, tab: t })}>
                 {TAB_LABEL[t]}
@@ -79,6 +80,7 @@ export default function BranchPage({
           {tab === "classes" && <ClassesTab branch={branch} classes={classes} onChanged={loadClasses} setClasses={setClasses} />}
           {tab === "staff" && <StaffTab branch={branch} />}
           {tab === "attendance" && <AttendanceTab branch={branch} />}
+          {tab === "facilities" && <FacilitiesTab branch={branch} />}
         </>
       )}
     </Layout>

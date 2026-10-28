@@ -28,6 +28,7 @@ if [ ! -f .env ]; then
   sed -i "s|^SECRET_KEY=.*|SECRET_KEY=${secret}|" .env
 fi
 .venv/bin/alembic upgrade head
+.venv/bin/python -m app.consolidate
 .venv/bin/python -m app.seed
 cd ..
 

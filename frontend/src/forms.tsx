@@ -57,23 +57,26 @@ export function BranchForm({
   onSubmit,
   onCancel,
 }: {
-  initial?: { name: string; address: string | null; has_boarding: boolean };
+  initial?: { name: string; address: string | null; has_boarding: boolean; phone?: string | null; email?: string | null };
   submitLabel: string;
-  onSubmit: (name: string, address: string, hasBoarding: boolean) => Promise<void>;
+  onSubmit: (name: string, address: string, hasBoarding: boolean, phone: string, email: string) => Promise<void>;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [address, setAddress] = useState(initial?.address ?? "");
   const [boarding, setBoarding] = useState(initial?.has_boarding ?? false);
+  const [phone, setPhone] = useState(initial?.phone ?? "");
+  const [email, setEmail] = useState(initial?.email ?? "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (name.trim().length < 2) return setError("Give the branch a name, for example Lekki campus.");
+    if (email.trim() && !/^\S+@\S+\.\S+$/.test(email.trim())) return setError("That email address doesn't look right.");
     setBusy(true);
     try {
-      await onSubmit(name.trim(), address.trim(), boarding);
+      await onSubmit(name.trim(), address.trim(), boarding, phone.trim(), email.trim());
     } catch (err) {
       setError(errorText(err, "Could not save the branch."));
       setBusy(false);
@@ -88,6 +91,14 @@ export function BranchForm({
       <Field label="Address (optional)">
         <input value={address} onChange={(e) => setAddress(e.target.value)} />
       </Field>
+      <div className="form-grid">
+        <Field label="Campus phone (optional)">
+          <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        </Field>
+        <Field label="Campus email (optional)">
+          <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }} />
+        </Field>
+      </div>
       <label className="check">
         <input type="checkbox" checked={boarding} onChange={(e) => setBoarding(e.target.checked)} />
         This branch has boarding

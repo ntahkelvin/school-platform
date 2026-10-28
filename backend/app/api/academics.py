@@ -145,6 +145,7 @@ class SubjectIn(BaseModel):
 
 class SubjectOut(SubjectIn):
     id: uuid.UUID
+    department_id: uuid.UUID | None = None
     model_config = {"from_attributes": True}
 
 

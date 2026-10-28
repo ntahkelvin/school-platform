@@ -46,8 +46,7 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
     { label: "Home", href: "#/" },
     ...(branch
       ? [
-          { label: branch.school_name, href: href({ page: "school", id: branch.school_id }) },
-          { label: branch.name, href: href({ page: "branch", id: branch.id, tab: "students" }) },
+          { label: branch.school_name, href: href({ page: "school", id: branch.school_id, tab: "students" }) },
         ]
       : []),
     { label: student?.full_name ?? "Student" },
@@ -78,7 +77,6 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
                 <dt>Date of birth</dt>
                 <dd>{student.date_of_birth ? `${new Date(student.date_of_birth + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })} (${age(student.date_of_birth)})` : "Not set"}</dd>
                 <dt>State of origin</dt><dd>{student.state_of_origin ?? "Not set"}</dd>
-                <dt>Branch</dt><dd>{branch.name}</dd>
               </dl>
             </section>
 

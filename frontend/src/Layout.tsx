@@ -12,11 +12,13 @@ export default function Layout({
   onLogout,
   crumbs,
   children,
+  wide = false,
 }: {
   me: Me;
   onLogout: () => void;
   crumbs: Crumb[];
   children: ReactNode;
+  wide?: boolean;
 }) {
   const sync = useSyncStatus();
   return (
@@ -48,7 +50,7 @@ export default function Layout({
           <button className="ghost" onClick={dismissFailures}>Dismiss</button>
         </div>
       )}
-      <main className="content">
+      <main className={wide ? "content wide" : "content"}>
         {crumbs.length > 0 && (
           <nav className="crumbs" aria-label="Breadcrumb">
             {crumbs.map((c, i) => (

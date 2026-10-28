@@ -52,6 +52,16 @@ Backend API documentation: http://localhost:8000/docs (while running).
 - [x] Week 1: login, roles, school group > school > branch
 - [x] Week 2: students, staff, families, sessions, terms, classes, subjects, editing schools and branches
 - [x] Week 3: attendance registers and night roll call, working offline
+- [x] School structure: profile and logo, sections, departments, subjects by department, houses, clubs,
+      grading scales, CA / exam split, bell times, calendar events, rules and policies;
+      per branch: facilities, hostels with rooms and beds, vehicles
+- [x] Starter set-up button per school; CA parts can be split into pieces (e.g. CA1 = test + assignment + classwork)
+- [x] Organisations (profile, logo, boards), moving schools between organisations, making a campus its own school,
+      boards of trustees / governors with members, and a read-only board view
+- [x] Simplified to Organisation → Schools. Every school is one site; its Students, Attendance, Classes,
+      Staff and Facilities are tabs on the school's page. setup.sh splits any old multi-branch school
+      into separate schools automatically.
+- [ ] Set up the three pilot schools
 - [ ] Week 4: scores and report cards
 - [ ] Week 5: fees ledger
 - [ ] Week 6: parent app with child switcher

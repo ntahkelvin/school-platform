@@ -63,7 +63,7 @@ export default function AttendanceTab({ branch }: { branch: BranchDetail }) {
             <Progress c={summary.school} />
             {summary.classes.length === 0 ? (
               <Empty>
-                No classes yet. <a href={href({ page: "branch", id: branch.id, tab: "classes" })}>Create classes</a> first.
+                No classes yet. <a href={href({ page: "school", id: branch.school_id, tab: "classes" })}>Create classes</a> first.
               </Empty>
             ) : (
               <ul className="list">
@@ -92,7 +92,7 @@ export default function AttendanceTab({ branch }: { branch: BranchDetail }) {
               </div>
               <Line c={summary.night} />
               <Progress c={summary.night} />
-              <p className="muted small">All boarders at {branch.name}. Hostels and dormitories come with the boarding module.</p>
+              <p className="muted small">All boarders at the school.</p>
             </div>
           )}
         </div>

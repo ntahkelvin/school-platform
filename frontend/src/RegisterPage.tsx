@@ -141,10 +141,10 @@ export default function RegisterPage({
     }
   }
 
-  const backTab = href({ page: "branch", id: reg?.branch_id ?? "", tab: "attendance" });
+  const backTab = branch ? href({ page: "school", id: branch.school_id, tab: "attendance" }) : "#/";
   const crumbs = [
     { label: "Home", href: "#/" },
-    ...(branch ? [{ label: branch.name, href: backTab }] : []),
+    ...(branch ? [{ label: branch.school_name, href: backTab }] : []),
     { label: kind === "night" ? "Night roll call" : reg?.title ?? "Register" },
   ];
 
