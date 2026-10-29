@@ -1,6 +1,7 @@
 // Small building blocks used by many screens.
 import { useEffect, useState, type ReactNode } from "react";
 import type { NewLogin } from "./api";
+import Icon from "./Icon";
 
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   useEffect(() => {
@@ -11,11 +12,9 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal card" role="dialog" aria-modal="true" aria-label={title}>
-        <div className="card-head">
+        <div className="modal-head">
           <h2>{title}</h2>
-          <button className="ghost" onClick={onClose} aria-label="Close">
-            ✕
-          </button>
+          <IconButton icon="close" label="Close" onClick={onClose} />
         </div>
         {children}
       </div>
@@ -63,6 +62,28 @@ export function Field({ label, children, hint }: { label: string; children: Reac
   );
 }
 
-export function Empty({ children }: { children: ReactNode }) {
-  return <div className="empty muted">{children}</div>;
+export function Empty({ children, icon }: { children: ReactNode; icon?: string }) {
+  return (
+    <div className="empty muted">
+      {icon && <span className="empty-icon"><Icon name={icon} size={22} /></span>}
+      <span>{children}</span>
+    </div>
+  );
+}
+
+export function IconButton({ icon, label, onClick, danger = false }: {
+  icon: string; label: string; onClick: () => void; danger?: boolean;
+}) {
+  return (
+    <button type="button" className={`icon-button${danger ? " danger-hover" : ""}`} onClick={onClick} aria-label={label} title={label}>
+      <Icon name={icon} size={17} />
+    </button>
+  );
+}
+
+/** Round initials badge for a person. */
+export function Avatar({ name, size = 36 }: { name: string; size?: number }) {
+  const parts = name.replace(/^(mr|mrs|ms|miss|dr|fr|rev|chief|prof)\.?\s+/i, "").split(/[\s,]+/).filter(Boolean);
+  const text = ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase();
+  return <span className="avatar" style={{ width: size, height: size, fontSize: size * 0.38 }} aria-hidden="true">{text}</span>;
 }

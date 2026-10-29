@@ -388,6 +388,7 @@ function DepartmentsTab({ schoolId, people }: { schoolId: string; people: Person
         people={people}
         api={deptApi}
         groupBy={(d) => DEPARTMENT_KIND[d.kind as keyof typeof DEPARTMENT_KIND]}
+        icon={(d) => (d.kind === "academic" ? "book" : "department")}
         summary={(d) => (
           <>
             <strong>{String(d.name)}</strong>
@@ -504,16 +505,15 @@ function HousesTab({ schoolId, people }: { schoolId: string; people: PersonOptio
         ]}
         people={people}
         api={houseApi}
+        icon={() => "houses"}
+        accent={(h) => (h.colour as string) || null}
         summary={(h) => (
-          <div className="row" style={{ alignItems: "center" }}>
-            <span className="swatch" style={{ background: (h.colour as string) || "transparent" }} />
-            <div>
-              <strong>{String(h.name)}</strong>
-              <span className="muted small block">
-                {[h.motto, h.master_name ? `Led by ${h.master_name}` : null].filter(Boolean).join(" · ") || "No details yet"}
-              </span>
-            </div>
-          </div>
+          <>
+            <strong>{String(h.name)}</strong>
+            <span className="muted small block">
+              {[h.motto, h.master_name ? `Led by ${h.master_name}` : null].filter(Boolean).join(", ") || "No details yet"}
+            </span>
+          </>
         )}
         emptyText="No houses yet."
       />
@@ -530,11 +530,12 @@ function HousesTab({ schoolId, people }: { schoolId: string; people: PersonOptio
         people={people}
         api={clubApi}
         groupBy={(c) => CLUB_KIND[c.kind as keyof typeof CLUB_KIND]}
+        icon={() => "club"}
         summary={(c) => (
           <>
             <strong>{String(c.name)}</strong>
             <span className="muted small block">
-              {[c.meeting_time, c.patron_name ? `Patron: ${c.patron_name}` : null].filter(Boolean).join(" · ") || "No details yet"}
+              {[c.meeting_time, c.patron_name ? `Patron: ${c.patron_name}` : null].filter(Boolean).join(", ") || "No details yet"}
             </span>
           </>
         )}
@@ -575,6 +576,7 @@ function CalendarTab({ school, people }: { school: School; people: PersonOption[
         people={people}
         api={eventApi}
         groupBy={(e) => new Date(String(e.starts_on) + "T00:00:00").toLocaleDateString("en-GB", { month: "long", year: "numeric" })}
+        icon={() => "event"}
         summary={(e) => (
           <>
             <strong>{String(e.title)}</strong>
@@ -602,6 +604,7 @@ function CalendarTab({ school, people }: { school: School; people: PersonOption[
         api={periodApi}
         reloadKey={sections.length}
         groupBy={(p) => (p.section_name ? String(p.section_name) : "Whole school")}
+        icon={() => "bell"}
         summary={(p) => (
           <>
             <strong>{String(p.name)}</strong>
@@ -739,6 +742,7 @@ function PoliciesTab({ schoolId, people }: { schoolId: string; people: PersonOpt
         people={people}
         api={policyApi}
         groupBy={(p) => String(p.category)}
+        icon={() => "policies"}
         summary={(p) => (
           <button className="link-button" onClick={() => setReading(p)}>
             <strong>{String(p.title)}</strong>

@@ -461,3 +461,155 @@ button.on-band:hover { background: rgba(255, 255, 255, 0.26); border-color: rgba
   .about-list dd { margin-bottom: 8px; }
   .main-title { font-size: 20px; }
 }
+
+/* ================= Shared visual upgrade ================= */
+/* Buttons take the school's colour inside a school */
+.school-shell button.primary, .modal button.primary { background: var(--school, var(--accent)); border-color: var(--school, var(--accent)); color: #fff; }
+.school-shell button.primary:hover, .modal button.primary:hover { filter: brightness(1.08); }
+button.with-icon { display: inline-flex; align-items: center; gap: 6px; }
+button { transition: background-color 0.15s, border-color 0.15s, color 0.15s; }
+
+.icon-button { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; border-radius: 9px; border: 1px solid transparent; background: transparent; color: var(--muted); }
+.icon-button:hover { background: var(--bg); border-color: var(--border); color: var(--text); }
+.icon-button.danger-hover:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: color-mix(in srgb, var(--danger) 8%, transparent); }
+
+/* Editor cards */
+.card.editor { gap: 16px; border-radius: 16px; }
+.card.editor > .card-head h2 { font-family: var(--display); font-size: 19px; font-weight: 700; }
+.editor-intro { margin-top: 4px; max-width: 60ch; }
+.group + .group { margin-top: 6px; }
+.group-title { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; font-size: 13px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--muted); }
+.group-title .count { font-size: 11px; font-weight: 700; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; display: inline-grid; place-items: center;
+  background: color-mix(in srgb, var(--school, var(--accent)) 14%, var(--surface)); color: var(--school, var(--accent)); }
+
+.items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.item { display: flex; align-items: center; gap: 14px; padding: 10px 10px 10px 12px; border-radius: 12px; border: 1px solid transparent; background: var(--bg); }
+.item:hover { border-color: var(--border); }
+.item-icon { flex: none; width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--school, var(--accent)) 13%, var(--surface)); color: var(--school, var(--accent)); }
+.item-body { flex: 1; min-width: 0; }
+.item-body strong { font-weight: 600; }
+.item-actions { display: flex; gap: 2px; flex: none; opacity: 0.75; }
+.item:hover .item-actions, .item:focus-within .item-actions { opacity: 1; }
+.tiles-layout { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.tiles-layout .item { align-items: flex-start; }
+
+.empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 28px 20px; border-radius: 14px; }
+.empty-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--bg); color: var(--muted); }
+
+.skeleton { display: flex; flex-direction: column; gap: 8px; }
+.skeleton span { height: 58px; border-radius: 12px; background: var(--bg); }
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton span { animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.5; } }
+  .overlay { animation: fade 0.16s ease-out; }
+  .modal { animation: rise 0.2s ease-out; }
+  @keyframes fade { from { opacity: 0; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
+}
+
+/* Windows */
+.overlay { background: rgba(10, 14, 12, 0.55); backdrop-filter: blur(3px); }
+.modal { border-radius: 18px; padding: 22px 24px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25); }
+.modal-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.modal-head h2 { font-family: var(--display); font-size: 20px; font-weight: 700; }
+
+.avatar { flex: none; display: inline-grid; place-items: center; border-radius: 50%; font-weight: 700; font-family: var(--display);
+  background: color-mix(in srgb, var(--school, var(--accent)) 16%, var(--surface)); color: var(--school, var(--accent)); }
+
+@media (prefers-color-scheme: dark) {
+  .item-icon, .avatar, .group-title .count { background: color-mix(in srgb, var(--school, var(--accent)) 30%, var(--surface)); color: color-mix(in srgb, var(--school, var(--accent)) 40%, #fff); }
+  .overlay { background: rgba(0, 0, 0, 0.6); }
+}
+@media (max-width: 600px) {
+  .item { gap: 10px; }
+  .item-icon { width: 34px; height: 34px; }
+  .item-actions { opacity: 1; }
+}
+
+/* Facilities page */
+.summary-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.summary-strip > div { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); }
+.summary-strip .icon { color: var(--school, var(--accent)); }
+.summary-strip strong { font-family: var(--display); font-size: 24px; line-height: 1; }
+.summary-strip span { font-size: 13px; color: var(--muted); }
+.plate { margin-left: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 6px; border-radius: 4px; background: #f7d64a; color: #222; border: 1px solid #c9a817; }
+
+.hostel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.hostel { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 14px; background: var(--bg); border: 1px solid var(--border); }
+.hostel-head { display: flex; gap: 12px; align-items: center; }
+.hostel-head h3 { font-family: var(--display); font-size: 17px; margin: 0; }
+.hostel-stats { display: flex; gap: 16px; font-size: 13px; color: var(--muted); }
+.hostel-stats strong { font-family: var(--display); font-size: 18px; color: var(--text); }
+.room { display: flex; flex-direction: column; gap: 6px; border-top: none; padding-top: 0; }
+.room-head { display: flex; justify-content: space-between; align-items: center; }
+.bed-map { display: grid; grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 5px; }
+.bed { height: 30px; padding: 0; font-size: 11px; font-weight: 600; border-radius: 7px;
+  border: 1px solid color-mix(in srgb, var(--school, var(--accent)) 45%, var(--border));
+  background: color-mix(in srgb, var(--school, var(--accent)) 12%, var(--surface)); color: var(--text); }
+.bed.lower { border-bottom-width: 3px; }
+.bed:disabled { opacity: 1; cursor: default; }
+.bed:not(:disabled):hover { background: color-mix(in srgb, var(--danger) 15%, var(--surface)); border-color: var(--danger); color: var(--danger); text-decoration: line-through; }
+.hostel-tools { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.manage-toggle { align-self: flex-start; font-size: 13px; padding: 6px 12px; }
+@media (prefers-color-scheme: dark) { .bed { background: color-mix(in srgb, var(--school, var(--accent)) 28%, var(--surface)); } }
+@media (max-width: 900px) { .summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Students, classes, staff */
+.students-toolbar .search { flex: 1; min-width: 220px; display: flex; flex-direction: row; align-items: center; gap: 8px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); }
+.students-toolbar .search input { border: none; background: transparent; padding: 11px 0; flex: 1; min-width: 0; outline: none; }
+.students-toolbar .search:focus-within { outline: 2px solid var(--school, var(--accent)); outline-offset: 1px; }
+.filter-chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
+.filter-chips button { white-space: nowrap; border-radius: 999px; padding: 6px 12px; font-size: 13px; display: inline-flex; gap: 6px; align-items: center; }
+.filter-chips button.on { background: var(--school, var(--accent)); border-color: var(--school, var(--accent)); color: #fff; }
+.chip-count { font-size: 11px; opacity: 0.75; }
+.people-table { border-radius: 14px; padding: 4px 6px 8px; }
+.people-table td { vertical-align: middle; }
+.person { display: flex; align-items: center; gap: 12px; }
+.person a { font-weight: 600; color: var(--text); }
+.class-chip { display: inline-block; font-size: 13px; font-weight: 600; padding: 3px 9px; border-radius: 7px; background: var(--bg); border: 1px solid var(--border); }
+.badge { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--bg); border: 1px solid var(--border); color: var(--muted); }
+.badge-boarder { background: color-mix(in srgb, var(--school, var(--accent)) 12%, var(--surface)); border-color: color-mix(in srgb, var(--school, var(--accent)) 35%, var(--border)); color: var(--school, var(--accent)); }
+.capitalize { text-transform: capitalize; }
+.table-foot { padding: 6px 12px 0; }
+
+.add-class select, .add-class input { padding: 8px 10px; }
+.add-class input { width: 170px; }
+.class-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.class-tile { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 14px 14px 12px; border-radius: 12px; background: var(--bg); border: 1px solid var(--border);
+  border-top: 4px solid var(--school, var(--accent)); }
+.class-name { font-family: var(--display); font-size: 22px; line-height: 1.15; }
+.class-tile-actions { position: absolute; top: 6px; right: 6px; opacity: 0; }
+.class-tile:hover .class-tile-actions, .class-tile:focus-within .class-tile-actions { opacity: 1; }
+
+.people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.person-card { display: flex; gap: 14px; padding: 16px; border-radius: 14px; background: var(--bg); border: 1px solid var(--border); }
+.person-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.person-info a { color: var(--muted); overflow-wrap: anywhere; }
+.person-info .chips { margin-top: 6px; }
+.role-chip { background: var(--surface); }
+@media (prefers-color-scheme: dark) { .badge-boarder { color: color-mix(in srgb, var(--school, var(--accent)) 40%, #fff); background: color-mix(in srgb, var(--school, var(--accent)) 28%, var(--surface)); } }
+@media (max-width: 600px) { .class-tile-actions { opacity: 1; } .add-class input { width: 100%; } }
+
+/* Attendance overview */
+.date-pick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); width: fit-content; }
+.date-pick .icon { color: var(--school, var(--accent)); }
+.date-pick input { padding: 6px 8px; }
+.mini-ring-text { font-family: var(--display); font-size: 13px; font-weight: 700; fill: var(--text); }
+.register-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.register-card, .night-card { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 14px; background: var(--bg); border: 1px solid var(--border); color: var(--text); }
+.register-card:hover, .night-card:hover { text-decoration: none; border-color: var(--school, var(--accent)); }
+.register-card.pending { border-style: dashed; }
+.register-info { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.register-info .class-name { font-size: 18px; }
+.register-cta { font-size: 13px; font-weight: 600; color: var(--school, var(--accent)); white-space: nowrap; }
+.night-card { background: var(--surface); }
+@media (prefers-color-scheme: dark) { .register-cta, .date-pick .icon, .summary-strip .icon { color: color-mix(in srgb, var(--school, var(--accent)) 45%, #fff); } }
+
+.editor-lead { margin: 0; font-family: var(--display); font-size: 17px; font-weight: 600; align-self: center; }
+.card.editor > .card-head { align-items: center; }
+
+button.with-icon { white-space: nowrap; }
+.card.night-card { flex-direction: row; align-items: center; gap: 14px; text-align: left; }
+
+.plate { white-space: nowrap; }

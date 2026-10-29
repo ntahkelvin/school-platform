@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { errorText } from "./api";
 import type { Item, PersonOption } from "./structureApi";
-import { Empty, Field, Modal } from "./ui";
+import { Empty, Field, IconButton, Modal } from "./ui";
+import Icon from "./Icon";
 
 export type FieldType = "text" | "textarea" | "number" | "select" | "colour" | "date" | "time" | "person";
 
@@ -149,6 +150,7 @@ export function RecordForm({
 
 export default function RecordEditor({
   title, noun, intro, fields, people, api, summary, emptyText, groupBy, actions, reloadKey, onChanged,
+  icon, accent, layout = "list", onItems,
 }: {
   title: string;
   noun: string; // "house", "club"...
@@ -167,14 +169,18 @@ export default function RecordEditor({
   actions?: (reload: () => void) => ReactNode;
   reloadKey?: unknown;
   onChanged?: () => void;
+  icon?: (item: Item) => string;           // icon shown on each row
+  accent?: (item: Item) => string | null;  // colour for the icon tile, e.g. a house colour
+  layout?: "list" | "tiles";
+  onItems?: (items: Item[]) => void;       // lets a page show totals
 }) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<Item | "new" | null>(null);
 
   const load = useCallback(() => {
-    api.list().then(setItems).catch((err) => setError(errorText(err)));
-  }, [api]);
+    api.list().then((list) => { setItems(list); onItems?.(list); }).catch((err) => setError(errorText(err)));
+  }, [api]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(load, [load, reloadKey]);
 
   const changed = () => {
@@ -190,40 +196,52 @@ export default function RecordEditor({
     else groups.push([g, [it]]);
   }
 
+  const remove = (it: Item) => {
+    const name = String(it.name ?? it.title ?? noun);
+    if (window.confirm(`Delete ${name}? This can't be undone.`))
+      api.remove(it.id).then(changed).catch((err) => setError(errorText(err)));
+  };
+
   return (
-    <section className="card">
+    <section className="card editor">
       <div className="card-head">
-        <h2>{title}</h2>
+        <div>
+          <h2>{title}</h2>
+          {intro && <p className="muted small editor-intro">{intro}</p>}
+        </div>
         <div className="row wrap">
           {actions?.(changed)}
-          <button className="primary" onClick={() => setEditing("new")}>Add {noun}</button>
+          <button className="primary with-icon" onClick={() => setEditing("new")}><Icon name="plus" size={16} />Add {noun}</button>
         </div>
       </div>
-      {intro && <p className="muted small">{intro}</p>}
       {error && <p className="error">{error}</p>}
-      {items?.length === 0 && <Empty>{emptyText}</Empty>}
+      {items === null && !error && <div className="skeleton" aria-hidden="true"><span /><span /><span /></div>}
+      {items?.length === 0 && <Empty icon={icon ? undefined : "plus"}>{emptyText}</Empty>}
       {groups.map(([g, list]) => (
-        <div key={g}>
-          {g && <h3 className="group-title">{g}</h3>}
-          <ul className="list">
-            {list.map((it) => (
-              <li key={it.id}>
-                <div className="grow">{summary(it)}</div>
-                <div className="row">
-                  <button className="ghost" onClick={() => setEditing(it)}>Edit</button>
-                  <button
-                    className="ghost"
-                    onClick={() => {
-                      const name = String(it.name ?? it.title ?? noun);
-                      if (window.confirm(`Delete ${name}? This can't be undone.`))
-                        api.remove(it.id).then(changed).catch((err) => setError(errorText(err)));
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </li>
-            ))}
+        <div key={g} className="group">
+          {g && (
+            <h3 className="group-title">
+              {g}<span className="count">{list.length}</span>
+            </h3>
+          )}
+          <ul className={layout === "tiles" ? "items tiles-layout" : "items"}>
+            {list.map((it) => {
+              const colour = accent?.(it);
+              return (
+                <li key={it.id} className="item">
+                  {icon && (
+                    <span className="item-icon" style={colour ? { background: colour, color: "#fff" } : undefined}>
+                      <Icon name={icon(it)} size={19} />
+                    </span>
+                  )}
+                  <div className="item-body">{summary(it)}</div>
+                  <div className="item-actions">
+                    <IconButton icon="edit" label={`Edit ${String(it.name ?? it.title ?? noun)}`} onClick={() => setEditing(it)} />
+                    <IconButton icon="trash" label={`Delete ${String(it.name ?? it.title ?? noun)}`} danger onClick={() => remove(it)} />
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </div>
       ))}
