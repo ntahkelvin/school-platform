@@ -209,6 +209,9 @@ class ClassOut(BaseModel):
     arm: str
     name: str
     student_count: int
+    boys: int = 0
+    girls: int = 0
+    boarders: int = 0
 
 
 @router.get("/levels", response_model=list[str])
@@ -224,19 +227,25 @@ def _level_order(level: str) -> int:
 
 
 def class_list(db: Session, branch_id: uuid.UUID) -> list[ClassOut]:
-    counts = dict(
-        db.execute(
-            select(Student.class_id, func.count())
-            .where(Student.branch_id == branch_id, Student.status == StudentStatus.active)
-            .group_by(Student.class_id)
-        ).all()
-    )
+    rows = db.execute(
+        select(Student.class_id, Student.gender, Student.boarding_status, func.count())
+        .where(Student.branch_id == branch_id, Student.status == StudentStatus.active)
+        .group_by(Student.class_id, Student.gender, Student.boarding_status)
+    ).all()
+    tally: dict = {}
+    for class_id, gender, boarding, n in rows:
+        t = tally.setdefault(class_id, {"student_count": 0, "boys": 0, "girls": 0, "boarders": 0})
+        t["student_count"] += n
+        t["boys" if gender.value == "male" else "girls"] += n
+        if boarding.value == "boarder":
+            t["boarders"] += n
     classes = db.scalars(
         select(SchoolClass)
         .where(SchoolClass.branch_id == branch_id)
         .order_by(SchoolClass.level_order, SchoolClass.level, SchoolClass.arm)
     )
-    return [ClassOut(id=c.id, level=c.level, arm=c.arm, name=c.name, student_count=counts.get(c.id, 0)) for c in classes]
+    empty = {"student_count": 0, "boys": 0, "girls": 0, "boarders": 0}
+    return [ClassOut(id=c.id, level=c.level, arm=c.arm, name=c.name, **tally.get(c.id, empty)) for c in classes]
 
 
 @router.get("/branches/{branch_id}/classes", response_model=list[ClassOut])
@@ -253,7 +262,7 @@ def add_class(branch_id: uuid.UUID, data: ClassIn, user: User = Depends(current_
         select(SchoolClass).where(SchoolClass.branch_id == branch_id, SchoolClass.level == level, SchoolClass.arm == arm)
     )
     if clash:
-        raise HTTPException(status.HTTP_409_CONFLICT, f"{clash.name} already exists at this branch")
+        raise HTTPException(status.HTTP_409_CONFLICT, f"{clash.name} already exists in this school")
     db.add(SchoolClass(branch_id=branch_id, level=level, arm=arm, level_order=_level_order(level)))
     db.commit()
     return class_list(db, branch_id)

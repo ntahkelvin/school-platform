@@ -3,8 +3,12 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { errorText } from "./api";
 import type { Item, PersonOption } from "./structureApi";
-import { Empty, Field, IconButton, Modal } from "./ui";
+import { Empty, Field, Glyph, hue, IconButton, Modal } from "./ui";
 import Icon from "./Icon";
+import type { Look } from "./look";
+
+/** How a row looks: its icon and colour. A colour (e.g. a house colour) beats the hue. */
+export type RowLook = Look & { colour?: string | null };
 
 export type FieldType = "text" | "textarea" | "number" | "select" | "colour" | "date" | "time" | "person";
 
@@ -150,7 +154,7 @@ export function RecordForm({
 
 export default function RecordEditor({
   title, noun, intro, fields, people, api, summary, emptyText, groupBy, actions, reloadKey, onChanged,
-  icon, accent, layout = "list", onItems,
+  look, lead, groupLook, layout = "list", onItems, emptyIcon = "plus",
 }: {
   title: string;
   noun: string; // "house", "club"...
@@ -169,9 +173,11 @@ export default function RecordEditor({
   actions?: (reload: () => void) => ReactNode;
   reloadKey?: unknown;
   onChanged?: () => void;
-  icon?: (item: Item) => string;           // icon shown on each row
-  accent?: (item: Item) => string | null;  // colour for the icon tile, e.g. a house colour
-  layout?: "list" | "tiles";
+  look?: (item: Item) => RowLook;           // coloured icon shown on each row
+  lead?: (item: Item) => ReactNode;         // replaces the icon, e.g. a date badge
+  groupLook?: (group: string) => Look | null;
+  emptyIcon?: string;
+  layout?: "list" | "tiles" | "cards";
   onItems?: (items: Item[]) => void;       // lets a page show totals
 }) {
   const [items, setItems] = useState<Item[] | null>(null);
@@ -216,35 +222,36 @@ export default function RecordEditor({
       </div>
       {error && <p className="error">{error}</p>}
       {items === null && !error && <div className="skeleton" aria-hidden="true"><span /><span /><span /></div>}
-      {items?.length === 0 && <Empty icon={icon ? undefined : "plus"}>{emptyText}</Empty>}
-      {groups.map(([g, list]) => (
-        <div key={g} className="group">
-          {g && (
-            <h3 className="group-title">
-              {g}<span className="count">{list.length}</span>
-            </h3>
-          )}
-          <ul className={layout === "tiles" ? "items tiles-layout" : "items"}>
-            {list.map((it) => {
-              const colour = accent?.(it);
-              return (
-                <li key={it.id} className="item">
-                  {icon && (
-                    <span className="item-icon" style={colour ? { background: colour, color: "#fff" } : undefined}>
-                      <Icon name={icon(it)} size={19} />
-                    </span>
-                  )}
-                  <div className="item-body">{summary(it)}</div>
-                  <div className="item-actions">
-                    <IconButton icon="edit" label={`Edit ${String(it.name ?? it.title ?? noun)}`} onClick={() => setEditing(it)} />
-                    <IconButton icon="trash" label={`Delete ${String(it.name ?? it.title ?? noun)}`} danger onClick={() => remove(it)} />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
+      {items?.length === 0 && <Empty icon={emptyIcon}>{emptyText}</Empty>}
+      {groups.map(([g, list]) => {
+        const gl = g && groupLook ? groupLook(g) : null;
+        return (
+          <div key={g} className="group" style={gl ? hue(gl.hue) : undefined}>
+            {g && (
+              <h3 className="group-title">
+                {gl && <Glyph icon={gl.icon} hue={gl.hue} size={26} soft />}
+                {g}<span className="count">{list.length}</span>
+              </h3>
+            )}
+            <ul className={layout === "list" ? "items" : `items ${layout}-layout`}>
+              {list.map((it) => {
+                const l = look?.(it);
+                const name = String(it.name ?? it.title ?? noun);
+                return (
+                  <li key={it.id} className="item" style={l ? hue(l.hue, l.colour) : undefined}>
+                    {lead ? lead(it) : l && <Glyph icon={l.icon} hue={l.hue} colour={l.colour} size={layout === "cards" ? 52 : 42} />}
+                    <div className="item-body">{summary(it)}</div>
+                    <div className="item-actions">
+                      <IconButton icon="edit" label={`Edit ${name}`} onClick={() => setEditing(it)} />
+                      <IconButton icon="trash" label={`Delete ${name}`} danger onClick={() => remove(it)} />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })}
       {editing && (
         <Modal title={editing === "new" ? `Add ${noun}` : `Edit ${noun}`} onClose={() => setEditing(null)}>
           <RecordForm

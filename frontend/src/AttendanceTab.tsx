@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, longDate, todayLocal, type BranchDetail, type Counts, type DaySummary } from "./api";
 import { href } from "./router";
 import Icon from "./Icon";
-import { Empty } from "./ui";
+import { Empty, Glyph, hue, Stat } from "./ui";
 
 function Line({ c }: { c: Counts }) {
   if (c.total === 0) return <span className="muted small">No students</span>;
@@ -25,7 +25,7 @@ function MiniRing({ c }: { c: Counts }) {
     <svg width="56" height="56" viewBox="0 0 56 56" aria-hidden="true" className="mini-ring">
       <circle cx="28" cy="28" r={r} fill="none" stroke="var(--border)" strokeWidth="6" />
       <circle cx="28" cy="28" r={r} fill="none" stroke="var(--border-strong, #bbb)" strokeWidth="6" strokeDasharray={`${len * marked} ${len}`} transform="rotate(-90 28 28)" opacity="0.5" />
-      <circle cx="28" cy="28" r={r} fill="none" stroke="var(--school, var(--accent))" strokeWidth="6" strokeLinecap="round"
+      <circle cx="28" cy="28" r={r} fill="none" stroke={pct >= 0.9 ? "var(--h-green)" : pct >= 0.75 ? "var(--h-amber)" : "var(--h-red)"} strokeWidth="6" strokeLinecap="round"
               strokeDasharray={`${len * pct} ${len}`} transform="rotate(-90 28 28)" />
       <text x="28" y="28" textAnchor="middle" dominantBaseline="central" className="mini-ring-text">
         {c.marked ? `${Math.round(pct * 100)}%` : "–"}
@@ -59,15 +59,20 @@ export default function AttendanceTab({ branch }: { branch: BranchDetail }) {
       {summary === null && !error && <div className="skeleton" aria-hidden="true"><span /><span /></div>}
       {summary && s && (
         <>
-          <div className="summary-strip">
-            <div><MiniRing c={s} /><span><strong className="block">{s.marked ? `${s.present + s.late} present` : "Not taken"}</strong>{s.marked} of {s.total} marked</span></div>
-            <div><Icon name="students" size={20} /><strong>{s.absent}</strong><span>absent</span></div>
-            <div><Icon name="attendance" size={20} /><strong>{s.late}</strong><span>late</span></div>
-            <div><Icon name="sick_bay" size={20} /><strong>{s.excused}</strong><span>excused</span></div>
+          <div className="stat-strip">
+            <Stat icon="attendance" hue="green" value={s.marked ? s.present + s.late : "–"} label="present" note={`${s.marked} of ${s.total} marked`} />
+            <Stat icon="close" hue="red" value={s.absent} label="absent" />
+            <Stat icon="clock" hue="amber" value={s.late} label="late" />
+            <Stat icon="sick_bay" hue="blue" value={s.excused} label="excused" />
           </div>
 
           <div className="card editor">
-            <div className="card-head"><h2>Class registers</h2></div>
+            <div className="card-head">
+              <div>
+                <h2>Class registers</h2>
+                <p className="muted small editor-intro">The ring shows who is in school: green above 90%, amber above 75%.</p>
+              </div>
+            </div>
             {summary.classes.length === 0 ? (
               <Empty icon="classes">
                 No classes yet. <a href={href({ page: "school", id: branch.school_id, tab: "classes" })}>Create classes</a> first.
@@ -90,7 +95,8 @@ export default function AttendanceTab({ branch }: { branch: BranchDetail }) {
           </div>
 
           {summary.night && (
-            <a className="card night-card" href={href({ page: "register", kind: "night", id: branch.id, date })}>
+            <a className="card night-card" style={hue("indigo")} href={href({ page: "register", kind: "night", id: branch.id, date })}>
+              <Glyph icon="moon" hue="indigo" size={52} />
               <MiniRing c={summary.night} />
               <span className="register-info">
                 <strong className="class-name">Night roll call</strong>

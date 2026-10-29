@@ -62,7 +62,8 @@ export type SchoolType = "day" | "boarding" | "mixed";
 export type Gender = "male" | "female";
 export type BoardingStatus = "day" | "boarder";
 export type StudentStatus = "active" | "graduated" | "withdrawn";
-export type StaffRole = "head" | "bursar" | "teacher" | "house_parent";
+export type StaffRole = "head" | "bursar" | "teacher" | "house_parent" | "support";
+export type EmploymentType = "full_time" | "part_time" | "contract" | "nysc" | "volunteer";
 
 export interface Branch {
   id: string;
@@ -137,6 +138,9 @@ export interface SchoolClass {
   arm: string;
   name: string;
   student_count: number;
+  boys?: number;
+  girls?: number;
+  boarders?: number;
 }
 export interface StudentRow {
   id: string;
@@ -194,6 +198,52 @@ export interface StaffMember {
   phone: string | null;
   email: string | null;
   roles: { membership_id: string; role: StaffRole }[];
+  staff_no: string | null;
+  title: string | null;
+  gender: Gender | null;
+  job_title: string | null;
+  department_id: string | null;
+  department_name: string | null;
+  teaching: boolean;
+  employment_type: EmploymentType;
+  date_joined: string | null;
+  qualification: string | null;
+  heads_departments: string[];
+}
+export interface StaffProfileIn {
+  full_name: string;
+  staff_no: string | null;
+  title: string | null;
+  gender: Gender | null;
+  job_title: string | null;
+  department_id: string | null;
+  teaching: boolean;
+  employment_type: EmploymentType;
+  date_joined: string | null;
+  qualification: string | null;
+}
+export interface ImportKind {
+  key: string;
+  title: string;
+  noun: string;
+  about: string;
+  icon: string;
+  hue: string;
+  columns: { header: string; required: boolean; hint: string }[];
+}
+export interface ImportRow { row: number; status: "added" | "updated" | "skipped" | "error"; message: string }
+export interface ImportResult {
+  kind: string;
+  committed: boolean;
+  total: number;
+  added: number;
+  updated: number;
+  skipped: number;
+  errors: number;
+  new_logins: number;
+  unknown_columns: string[];
+  rows: ImportRow[];
+  logins: { name: string; username: string; password: string; for: string }[];
 }
 
 export type AttendanceStatus = "present" | "absent" | "late" | "excused";
@@ -303,13 +353,25 @@ export const api = {
     send<void>("DELETE", `/api/students/${studentId}/guardians/${linkId}`),
 
   staff: (branchId: string) => get<StaffMember[]>(`/api/branches/${branchId}/staff`),
-  addStaff: (branchId: string, full_name: string, phone: string, email: string, role: StaffRole) =>
-    send<{ staff: StaffMember[]; new_login: NewLogin | null }>("POST", `/api/branches/${branchId}/staff`, {
-      full_name,
-      phone,
-      email,
-      role,
-    }),
+  addStaff: (branchId: string, data: StaffProfileIn & { phone: string; email: string; role: StaffRole }) =>
+    send<{ staff: StaffMember[]; new_login: NewLogin | null }>("POST", `/api/branches/${branchId}/staff`, data),
+  updateStaff: (branchId: string, userId: string, data: StaffProfileIn) =>
+    send<StaffMember[]>("PUT", `/api/branches/${branchId}/staff/${userId}`, data),
+  staffOptions: () => get<{ key_positions: string[]; job_titles: string[] }>("/api/staff-options"),
+  importKinds: (branchId: string) => get<ImportKind[]>(`/api/branches/${branchId}/imports`),
+  importFile: (branchId: string, kind: string, file: File, commit: boolean) => {
+    const body = new FormData();
+    body.append("file", file);
+    return request<ImportResult>(`/api/branches/${branchId}/imports/${kind}?commit=${commit}`, { method: "POST", body });
+  },
+  importTemplate: async (branchId: string, kind: string): Promise<{ blob: Blob; filename: string }> => {
+    const res = await fetch(`/api/branches/${branchId}/imports/${kind}/template`, {
+      headers: { Authorization: `Bearer ${getToken() ?? ""}` },
+    });
+    if (!res.ok) throw new ApiError(res.status, "The template couldn't be made. Please try again.");
+    const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? `${kind}.xlsx`;
+    return { blob: await res.blob(), filename: name };
+  },
   removeStaffRole: (membershipId: string) => send<void>("DELETE", `/api/staff-roles/${membershipId}`),
 
   register: (kind: AttendanceKind, id: string, date: string) => get<Register>(`${registerPath(kind, id)}?date=${date}`),
@@ -339,6 +401,7 @@ export const ROLE_LABEL: Record<StaffRole, string> = {
   bursar: "Bursar",
   teacher: "Teacher",
   house_parent: "House parent",
+  support: "Support staff",
 };
 
 export function errorText(err: unknown, fallback = "Something went wrong."): string {

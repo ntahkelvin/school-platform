@@ -3,7 +3,13 @@ import { errorText } from "./api";
 import { structure, type Band, type Component, type Scale, type Scheme } from "./structureApi";
 
 type PartRow = { name: string; max_score: string };
-import { Empty, Field, Modal } from "./ui";
+import { Empty, Field, Glyph, hue, IconButton, Modal } from "./ui";
+import Icon from "./Icon";
+
+/** Best grades green, then through blue and amber to red for a fail. */
+const LADDER = ["green", "lime", "teal", "sky", "blue", "indigo", "amber", "orange", "red"] as const;
+const bandHue = (i: number, n: number) => LADDER[Math.min(LADDER.length - 1, Math.round((i / Math.max(1, n - 1)) * (LADDER.length - 1)))];
+const PART_HUES = ["blue", "violet", "teal", "pink", "amber", "cyan"] as const;
 
 // ---------------- Grading scales ----------------
 
@@ -26,40 +32,35 @@ export function GradingCard({ schoolId }: { schoolId: string }) {
   }, [load]);
 
   return (
-    <section className="card">
+    <section className="card editor">
       <div className="card-head">
-        <h2>Grading scales</h2>
-        <button className="primary" onClick={() => setEditing("new")}>Add grading scale</button>
+        <div>
+          <h2>Grading scales</h2>
+          <p className="muted small editor-intro">Turns a score out of 100 into a grade. Each section chooses its scale on the Sections tab.</p>
+        </div>
+        <button className="primary with-icon" onClick={() => setEditing("new")}><Icon name="plus" size={16} />Add grading scale</button>
       </div>
-      <p className="muted small">Turns a score out of 100 into a grade. Each section chooses its scale on the Sections tab.</p>
       {error && <p className="error">{error}</p>}
       {scales?.length === 0 && <Empty>No grading scales yet. Add one, starting from the WAEC A1 to F9 scale if you like.</Empty>}
       {scales?.map((s) => (
-        <div key={s.id} className="sub-card">
-          <div className="card-head">
-            <strong>{s.name}</strong>
-            <div className="row">
-              <button className="ghost" onClick={() => setEditing(s)}>Edit</button>
-              <button
-                className="ghost"
-                onClick={() => {
-                  if (window.confirm(`Delete the ${s.name} grading scale?`))
-                    structure.deleteScale(s.id).then(load).catch((err) => setError(errorText(err)));
-                }}
-              >
-                Delete
-              </button>
-            </div>
+        <div key={s.id} className="scale">
+          <div className="scale-head">
+            <Glyph icon="award" hue="amber" size={36} soft />
+            <strong className="grow">{s.name}</strong>
+            <IconButton icon="edit" label={`Edit ${s.name}`} onClick={() => setEditing(s)} />
+            <IconButton icon="trash" label={`Delete ${s.name}`} danger onClick={() => {
+              if (window.confirm(`Delete the ${s.name} grading scale?`))
+                structure.deleteScale(s.id).then(load).catch((err) => setError(errorText(err)));
+            }} />
           </div>
-          <div className="table-wrap plain">
-            <table>
-              <thead><tr><th>Grade</th><th>Score</th><th>Remark</th></tr></thead>
-              <tbody>
-                {s.bands.map((b) => (
-                  <tr key={b.grade}><td><strong>{b.grade}</strong></td><td>{b.min_score} to {b.max_score}</td><td>{b.remark}</td></tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="grade-ladder">
+            {s.bands.map((b, i) => (
+              <div key={b.grade} className="grade" style={hue(bandHue(i, s.bands.length))}>
+                <strong>{b.grade}</strong>
+                <span className="grade-range">{b.min_score}–{b.max_score}</span>
+                <span className="grade-remark">{b.remark}</span>
+              </div>
+            ))}
           </div>
         </div>
       ))}
@@ -177,34 +178,32 @@ export function SchemesCard({ schoolId }: { schoolId: string }) {
   }, [load]);
 
   return (
-    <section className="card">
+    <section className="card editor">
       <div className="card-head">
-        <h2>CA and exam split</h2>
-        <button className="primary" onClick={() => setEditing("new")}>Add CA / exam split</button>
+        <div>
+          <h2>CA and exam split</h2>
+          <p className="muted small editor-intro">How each subject's 100 marks are made up, e.g. two CAs of 20 and an exam of 60. Each section chooses one.</p>
+        </div>
+        <button className="primary with-icon" onClick={() => setEditing("new")}><Icon name="plus" size={16} />Add CA / exam split</button>
       </div>
-      <p className="muted small">How each subject's 100 marks are made up, e.g. two CAs of 20 and an exam of 60. Each section chooses one.</p>
       {error && <p className="error">{error}</p>}
       {schemes?.length === 0 && <Empty>None yet.</Empty>}
       {schemes?.map((s) => (
-        <div key={s.id} className="sub-card">
-          <div className="card-head">
-            <strong>{s.name}</strong>
-            <div className="row">
-              <button className="ghost" onClick={() => setEditing(s)}>Edit</button>
-              <button
-                className="ghost"
-                onClick={() => {
-                  if (window.confirm(`Delete ${s.name}?`)) structure.deleteScheme(s.id).then(load).catch((err) => setError(errorText(err)));
-                }}
-              >
-                Delete
-              </button>
-            </div>
+        <div key={s.id} className="scale">
+          <div className="scale-head">
+            <Glyph icon="clipboard" hue="violet" size={36} soft />
+            <strong className="grow">{s.name}</strong>
+            <IconButton icon="edit" label={`Edit ${s.name}`} onClick={() => setEditing(s)} />
+            <IconButton icon="trash" label={`Delete ${s.name}`} danger onClick={() => {
+              if (window.confirm(`Delete ${s.name}?`)) structure.deleteScheme(s.id).then(load).catch((err) => setError(errorText(err)));
+            }} />
           </div>
           <div className="split-bar">
-            {s.components.map((c) => (
-              <span key={c.name} style={{ flexGrow: c.max_score }} className={/exam/i.test(c.name) ? "exam" : ""}>
-                {c.name} <strong>{c.max_score}</strong>
+            {s.components.map((c, i) => (
+              <span key={c.name} style={{ flexGrow: c.max_score, ...hue(/exam/i.test(c.name) ? "rose" : PART_HUES[i % PART_HUES.length]) }}
+                    className={/exam/i.test(c.name) ? "exam" : ""}>
+                <span className="split-name">{c.name}</span>
+                <strong>{c.max_score}</strong>
                 {c.parts.length > 0 && (
                   <span className="parts">
                     {c.parts.map((p) => `${p.name} ${p.max_score}`).join(" · ")}

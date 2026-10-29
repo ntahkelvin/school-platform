@@ -8,6 +8,7 @@ from app.models.structure import (
     FacilityKind, GradeBand, GradingScale, Hostel, HostelGender, HostelRoom, House, Period, PeriodKind, Policy,
     SchoolEvent, Section, Vehicle, VehicleKind,
 )
+from app.models.staff import EmploymentType, StaffProfile
 from app.models.tenancy import Branch, School, SchoolGroup, SchoolType
 from app.models.users import Membership, Role, User
 
@@ -20,5 +21,6 @@ __all__ = [
     "AcademicSession", "SchoolClass", "Subject", "Term",
     "BoardingStatus", "Gender", "Student", "StudentGuardian", "StudentStatus",
     "Branch", "School", "SchoolGroup", "SchoolType",
+    "EmploymentType", "StaffProfile",
     "Membership", "Role", "User",
 ]

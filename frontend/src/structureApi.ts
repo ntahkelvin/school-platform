@@ -70,6 +70,11 @@ export interface Bed {
   id: string;
   label: string;
   room_id: string | null;
+  student_id: string | null;
+  student_name: string | null;
+  student_class: string | null;
+  student_admission_no: string | null;
+  student_gender: "male" | "female" | null;
 }
 export interface Hostel {
   id: string;
@@ -133,6 +138,8 @@ export const structure = {
   addStandardSections: (schoolId: string, names: string[]) =>
     send<Section[]>("POST", `/api/schools/${schoolId}/sections/add-standard`, { names }),
   addStandardDepartments: (schoolId: string) => send<Item[]>("POST", `/api/schools/${schoolId}/departments/add-standard`),
+  assignBed: (bedId: string, studentId: string | null) =>
+    send<Hostel>("PUT", `/api/beds/${bedId}/student`, { student_id: studentId }),
   setSubjectDepartment: (subjectId: string, departmentId: string | null) =>
     send<void>("PUT", `/api/subjects/${subjectId}/department`, { department_id: departmentId }),
 

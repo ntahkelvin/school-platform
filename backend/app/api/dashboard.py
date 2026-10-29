@@ -16,7 +16,7 @@ from app.models import (
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
 
-STAFF_ROLES = [Role.head, Role.bursar, Role.teacher, Role.house_parent]
+STAFF_ROLES = [Role.head, Role.bursar, Role.teacher, Role.house_parent, Role.support]
 
 
 class Today(BaseModel):

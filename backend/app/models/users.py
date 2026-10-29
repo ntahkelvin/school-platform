@@ -21,7 +21,8 @@ class Role(str, enum.Enum):
     house_parent = "house_parent"  # boarding welfare
     parent = "parent"
     student = "student"
-    board_member = "board_member"  # read-only view of the organisation or one school
+    board_member = "board_member"
+    support = "support"        # non-teaching staff: listed as staff, no special access yet  # read-only view of the organisation or one school
 
 
 class User(IdMixin, TimestampMixin, Base):

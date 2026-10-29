@@ -148,7 +148,7 @@ def _check_class(db: Session, branch_id: uuid.UUID, class_id: uuid.UUID | None) 
         return
     cls = db.get(SchoolClass, class_id)
     if not cls or cls.branch_id != branch_id:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That class isn't at this branch")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That class isn't in this school")
 
 
 def _check_admission_no(db: Session, school_id: uuid.UUID, number: str, exclude: uuid.UUID | None = None) -> None:

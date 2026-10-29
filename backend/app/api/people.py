@@ -1,5 +1,6 @@
 """Shared helper: find a person by phone/email, or create them."""
 import secrets
+from contextvars import ContextVar
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -8,6 +9,11 @@ from sqlalchemy.orm import Session
 from app.core.phone import normalize_phone
 from app.core.security import hash_password
 from app.models import User
+
+
+# During a bulk upload, new passwords are hashed together at the end (much faster), so the
+# hashing is put off by collecting the new users here instead.
+deferred_hashes: ContextVar[list | None] = ContextVar("deferred_hashes", default=None)
 
 
 def temporary_password() -> str:
@@ -42,7 +48,11 @@ def find_or_create_user(
         return existing, None
 
     password = temporary_password()
-    user = User(full_name=full_name.strip(), phone=phone, email=email, password_hash=hash_password(password))
+    pending = deferred_hashes.get()
+    user = User(full_name=full_name.strip(), phone=phone, email=email,
+                password_hash="!pending" if pending is not None else hash_password(password))
+    if pending is not None:
+        pending.append((user, password))
     db.add(user)
     db.flush()
     return user, password

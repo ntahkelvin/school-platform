@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   api, errorText, ROLE_LABEL,
-  type BranchDetail, type NewLogin, type SchoolClass, type StaffMember, type StaffRole, type StudentRow,
+  type BranchDetail, type EmploymentType, type NewLogin, type SchoolClass, type StaffMember, type StaffProfileIn,
+  type StaffRole, type StudentRow,
 } from "./api";
+import { ImportButton } from "./Bulk";
+import { records, type Item } from "./structureApi";
 import { go, href } from "./router";
 import StudentForm from "./StudentForm";
-import { Avatar, Empty, Field, IconButton, Modal, NewLoginNotice } from "./ui";
+import { Avatar, Empty, Field, Glyph, hue, IconButton, Modal, NewLoginNotice, nicePhone, Stat } from "./ui";
 import Icon from "./Icon";
+import { departmentLook, ROLE_HUE, STAGE_LOOK, stageOf } from "./look";
+
+const stageHue = (level: string) => STAGE_LOOK[stageOf(level)].hue;
+const levelOfName = (name: string) => name.replace(/\s*[A-Za-z]+$/, "").trim() || name;
 
 
 // ---------------- Students ----------------
@@ -33,8 +40,17 @@ export function StudentsTab({
     return () => clearTimeout(t);
   }, [load]);
 
+  const sum = (k: "student_count" | "boys" | "girls" | "boarders") => classes.reduce((n, c) => n + (c[k] ?? 0), 0);
   return (
     <section className="stack">
+      <div className="stat-strip">
+        <Stat icon="students" hue="violet" value={sum("student_count")} label="students" note={`in ${classes.length} classes`} />
+        <Stat icon="boys" hue="blue" value={sum("boys")} label="boys" />
+        <Stat icon="girls" hue="pink" value={sum("girls")} label="girls" />
+        {branch.has_boarding
+          ? <Stat icon="bed" hue="indigo" value={sum("boarders")} label="boarders" note={`${sum("student_count") - sum("boarders")} day students`} />
+          : <Stat icon="sun" hue="amber" value={sum("student_count")} label="day students" />}
+      </div>
       <div className="toolbar students-toolbar">
         <label className="search">
           <Icon name="search" size={17} />
@@ -44,14 +60,15 @@ export function StudentsTab({
           <input type="checkbox" checked={showLeft} onChange={(e) => setShowLeft(e.target.checked)} />
           Include students who left
         </label>
+        <ImportButton branchId={branch.id} kind="students" onDone={() => { load(); onClassesChanged(); }} />
         <button className="primary with-icon" onClick={() => setAdding(true)}><Icon name="plus" size={16} />Add student</button>
       </div>
       {classes.length > 0 && (
         <div className="filter-chips" role="group" aria-label="Filter by class">
           <button className={classId === "" ? "on" : ""} onClick={() => setClassId("")}>All classes</button>
           {classes.map((c) => (
-            <button key={c.id} className={classId === c.id ? "on" : ""} onClick={() => setClassId(c.id)}>
-              {c.name}<span className="chip-count">{c.student_count}</span>
+            <button key={c.id} className={classId === c.id ? "on" : ""} style={hue(stageHue(c.level))} onClick={() => setClassId(c.id)}>
+              <span className="chip-dot" />{c.name}<span className="chip-count">{c.student_count}</span>
             </button>
           ))}
         </div>
@@ -91,11 +108,17 @@ export function StudentsTab({
                       </span>
                     </span>
                   </td>
-                  <td>{s.class_name ? <span className="class-chip">{s.class_name}</span> : <span className="muted">None</span>}</td>
-                  <td className="hide-small">{s.gender === "female" ? "Female" : "Male"}</td>
+                  <td>{s.class_name ? <span className="class-chip" style={hue(stageHue(levelOfName(s.class_name)))}>{s.class_name}</span> : <span className="muted">None</span>}</td>
+                  <td className="hide-small">
+                    <span className="hue-chip" style={hue(s.gender === "female" ? "pink" : "blue")}>
+                      <Icon name={s.gender === "female" ? "girls" : "boys"} size={12} stroke={2.4} />{s.gender === "female" ? "Female" : "Male"}
+                    </span>
+                  </td>
                   {branch.has_boarding && (
                     <td className="hide-small">
-                      <span className={`badge ${s.boarding_status === "boarder" ? "badge-boarder" : ""}`}>{s.boarding_status === "boarder" ? "Boarder" : "Day"}</span>
+                      {s.boarding_status === "boarder"
+                        ? <span className="hue-chip" style={hue("indigo")}><Icon name="bed" size={12} stroke={2.4} />Boarder</span>
+                        : <span className="hue-chip" style={hue("amber")}><Icon name="sun" size={12} stroke={2.4} />Day</span>}
                     </td>
                   )}
                   {showLeft && <td className="capitalize">{s.status}</td>}
@@ -160,9 +183,6 @@ export function ClassesTab({
     }
   }
 
-  const stageOf = (level: string) =>
-    /^(creche|pre-nursery|nursery|kg)/i.test(level) ? "Nursery" : /^primary/i.test(level) ? "Primary"
-      : /^jss/i.test(level) ? "Junior Secondary" : /^ss/i.test(level) ? "Senior Secondary" : "Other";
   const stages: [string, SchoolClass[]][] = [];
   for (const c of classes) {
     const st = stageOf(c.level);
@@ -170,52 +190,102 @@ export function ClassesTab({
     if (found) found[1].push(c); else stages.push([st, [c]]);
   }
   const total = classes.reduce((n, c) => n + c.student_count, 0);
+  const biggest = Math.max(1, ...classes.map((c) => c.student_count));
 
   return (
-    <section className="card editor">
-      <div className="card-head">
-        <p className="editor-lead">{classes.length} {classes.length === 1 ? "class" : "classes"} with {total} {total === 1 ? "student" : "students"}</p>
-        <form className="row wrap add-class" onSubmit={add} noValidate>
-          <select aria-label="Level" value={level} onChange={(e) => { setLevel(e.target.value); setError(""); }}>
-            <option value="">Level…</option>
-            {levels.map((l) => <option key={l}>{l}</option>)}
-          </select>
-          <input aria-label="Arm" placeholder="Arm, e.g. A or Gold" value={arm} onChange={(e) => { setArm(e.target.value); setError(""); }} />
-          <button className="primary with-icon"><Icon name="plus" size={16} />Add class</button>
-        </form>
+    <div className="stack">
+      <div className="stat-strip">
+        <Stat icon="classes" hue="orange" value={classes.length} label={classes.length === 1 ? "class" : "classes"} note={`${stages.length} ${stages.length === 1 ? "stage" : "stages"}`} />
+        <Stat icon="students" hue="violet" value={total} label="students" note={classes.length ? `About ${Math.round(total / classes.length)} per class` : undefined} />
+        <Stat icon="boys" hue="blue" value={classes.reduce((n, c) => n + (c.boys ?? 0), 0)} label="boys" />
+        <Stat icon="girls" hue="pink" value={classes.reduce((n, c) => n + (c.girls ?? 0), 0)} label="girls" />
       </div>
-      {error && <p className="error">{error}</p>}
-      {classes.length === 0 ? (
-        <Empty icon="classes">No classes yet. Add one for each class, for example JSS 1 arm A.</Empty>
-      ) : (
-        stages.map(([stage, list]) => (
-          <div key={stage} className="group">
-            <h3 className="group-title">{stage}<span className="count">{list.length}</span></h3>
-            <div className="class-grid">
-              {list.map((c) => (
-                <div key={c.id} className="class-tile">
-                  <strong className="class-name">{c.name}</strong>
-                  <span className="muted small">{c.student_count} {c.student_count === 1 ? "student" : "students"}</span>
-                  <span className="class-tile-actions">
-                    <IconButton icon="trash" label={`Delete ${c.name}`} danger onClick={() => {
-                      if (window.confirm(`Delete ${c.name}?`)) api.deleteClass(c.id).then(onChanged).catch((err) => setError(errorText(err)));
-                    }} />
-                  </span>
-                </div>
-              ))}
-            </div>
+      <section className="card editor">
+        <div className="card-head">
+          <div>
+            <h2>All classes</h2>
+            <p className="muted small editor-intro">Each class is a level and an arm, for example JSS 1 and A.</p>
           </div>
-        ))
-      )}
-    </section>
+          <form className="row wrap add-class" onSubmit={add} noValidate>
+            <select aria-label="Level" value={level} onChange={(e) => { setLevel(e.target.value); setError(""); }}>
+              <option value="">Level…</option>
+              {levels.map((l) => <option key={l}>{l}</option>)}
+            </select>
+            <input aria-label="Arm" placeholder="Arm, e.g. A or Gold" value={arm} onChange={(e) => { setArm(e.target.value); setError(""); }} />
+            <button className="primary with-icon"><Icon name="plus" size={16} />Add class</button>
+          </form>
+        </div>
+        {error && <p className="error">{error}</p>}
+        {classes.length === 0 ? (
+          <Empty icon="classes">No classes yet. Add one for each class, for example JSS 1 arm A.</Empty>
+        ) : (
+          stages.map(([stage, list]) => {
+            const look = STAGE_LOOK[stage];
+            const n = list.reduce((x, c) => x + c.student_count, 0);
+            return (
+              <div key={stage} className="group stage" style={hue(look.hue)}>
+                <h3 className="stage-title">
+                  <Glyph icon={look.icon} hue={look.hue} size={34} />
+                  <span>{stage}</span>
+                  <span className="count">{list.length} {list.length === 1 ? "class" : "classes"} · {n} {n === 1 ? "student" : "students"}</span>
+                </h3>
+                <div className="class-grid">
+                  {list.map((c) => {
+                    const boys = c.boys ?? 0, girls = c.girls ?? 0;
+                    return (
+                      <div key={c.id} className="class-tile" data-class={c.name}>
+                        <div className="class-top">
+                          <strong className="class-name">{c.level}<span className="class-arm">{c.arm}</span></strong>
+                          <span className="class-tile-actions">
+                            <IconButton icon="trash" label={`Delete ${c.name}`} danger onClick={() => {
+                              if (window.confirm(`Delete ${c.name}?`)) api.deleteClass(c.id).then(onChanged).catch((err) => setError(errorText(err)));
+                            }} />
+                          </span>
+                        </div>
+                        <div className="class-count">
+                          <strong>{c.student_count}</strong> {c.student_count === 1 ? "student" : "students"}
+                        </div>
+                        <div className="split" title={`${boys} boys, ${girls} girls`}>
+                          <span className="split-boys" style={{ width: `${(100 * boys) / biggest}%` }} />
+                          <span className="split-girls" style={{ width: `${(100 * girls) / biggest}%` }} />
+                        </div>
+                        <div className="class-legend">
+                          <span><i className="dot boys" />{boys} boys</span>
+                          <span><i className="dot girls" />{girls} girls</span>
+                          {branch.has_boarding && c.boarders ? <span><Icon name="bed" size={12} />{c.boarders}</span> : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </section>
+    </div>
   );
 }
 
 // ---------------- Staff ----------------
 
+const EMPLOYMENT: Record<EmploymentType, string> = {
+  full_time: "Full time", part_time: "Part time", contract: "Contract", nysc: "NYSC corps member", volunteer: "Volunteer",
+};
+const TITLES = ["Mr", "Mrs", "Miss", "Ms", "Dr", "Rev Fr", "Fr", "Rev Sr", "Sr", "Br", "Prof", "Chief"];
+
+const displayName = (p: StaffMember) => [p.title, p.full_name].filter(Boolean).join(" ");
+const holds = (p: StaffMember, position: string) => {
+  const j = (p.job_title ?? "").toLowerCase(), want = position.toLowerCase();
+  return j === want || j.startsWith(want + " ") || j.startsWith(want + ",") || (want === "principal" && j === "head teacher");
+};
+
 export function StaffTab({ branch }: { branch: BranchDetail }) {
   const [staff, setStaff] = useState<StaffMember[] | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [departments, setDepartments] = useState<Item[]>([]);
+  const [options, setOptions] = useState<{ key_positions: string[]; job_titles: string[] }>({ key_positions: [], job_titles: [] });
+  const [dept, setDept] = useState<string>("");
+  const [editing, setEditing] = useState<StaffMember | { job_title: string } | null>(null);
   const [newLogin, setNewLogin] = useState<NewLogin | null>(null);
   const [error, setError] = useState("");
 
@@ -223,56 +293,140 @@ export function StaffTab({ branch }: { branch: BranchDetail }) {
     api.staff(branch.id).then(setStaff).catch((err) => setError(err.message));
   }, [branch.id]);
   useEffect(load, [load]);
+  useEffect(() => {
+    records("school", branch.school_id, "departments").list().then(setDepartments).catch(() => {});
+    api.staffOptions().then(setOptions).catch(() => {});
+  }, [branch.school_id]);
+
+  const list = (staff ?? []).filter((p) => !dept || (dept === "none" ? !p.department_id : p.department_id === dept));
+  const teaching = (staff ?? []).filter((p) => p.teaching).length;
+  const deptLook = (name: string | null, kind?: string) => (name ? departmentLook(name, kind) : { icon: "users", hue: "slate" as const });
 
   return (
-    <section className="card editor">
-      <div className="card-head">
-        <p className="editor-lead">{staff ? `${staff.length} ${staff.length === 1 ? "person" : "people"} working at the school` : "\u00a0"}</p>
-        <button className="primary with-icon" onClick={() => setAdding(true)}><Icon name="plus" size={16} />Add staff</button>
-      </div>
-      {error && <p className="error">{error}</p>}
-      {staff === null && !error && <div className="skeleton" aria-hidden="true"><span /><span /></div>}
-      {staff?.length === 0 && <Empty icon="staff">No staff yet.</Empty>}
-      {staff && staff.length > 0 && (
-        <div className="people-grid">
-          {staff.map((p) => (
-            <div key={p.user_id} className="person-card">
-              <Avatar name={p.full_name} size={48} />
-              <div className="person-info">
-                <strong>{p.full_name}</strong>
-                {p.phone && <a className="small" href={`tel:${p.phone}`}>{p.phone}</a>}
-                {p.email && <a className="small" href={`mailto:${p.email}`}>{p.email}</a>}
-                <div className="chips">
-                  {p.roles.map((r) => (
-                    <span key={r.membership_id} className="chip role-chip">
-                      {ROLE_LABEL[r.role]}
-                      <button
-                        className="chip-x"
-                        aria-label={`Remove ${ROLE_LABEL[r.role]} role`}
-                        onClick={() => {
-                          if (window.confirm(`Remove ${p.full_name} as ${ROLE_LABEL[r.role]}?`))
-                            api.removeStaffRole(r.membership_id).then(load).catch((err) => setError(errorText(err)));
-                        }}
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ))}
+    <div className="stack">
+      {staff && (
+        <div className="stat-strip">
+          <Stat icon="staff" hue="cyan" value={staff.length} label={staff.length === 1 ? "person" : "people"} note="working at the school" />
+          <Stat icon="book" hue="blue" value={teaching} label="teaching staff" />
+          <Stat icon="wrench" hue="orange" value={staff.length - teaching} label="non-teaching staff" />
+          <Stat icon="network" hue="violet" value={departments.filter((d) => d.head_user_id).length} label="heads of department"
+                note={`${departments.length} departments`} />
         </div>
       )}
-      {adding && (
-        <Modal title="Add staff" onClose={() => setAdding(false)}>
-          <AddStaffForm
-            onCancel={() => setAdding(false)}
-            onSubmit={async (name, phone, email, role) => {
-              const res = await api.addStaff(branch.id, name, phone, email, role);
-              setStaff(res.staff);
-              setAdding(false);
-              if (res.new_login) setNewLogin(res.new_login);
+
+      {staff && options.key_positions.length > 0 && (
+        <section className="card editor">
+          <div className="card-head">
+            <div>
+              <h2>Key positions</h2>
+              <p className="muted small editor-intro">Who holds each main post. Click an empty post to fill it.</p>
+            </div>
+            <span className="hue-chip" style={hue("green")}>
+              {options.key_positions.filter((k) => staff.some((p) => holds(p, k))).length} of {options.key_positions.length} filled
+            </span>
+          </div>
+          <div className="positions">
+            {options.key_positions.map((k) => {
+              const who = staff.filter((p) => holds(p, k));
+              return who.length ? (
+                <button key={k} className="position filled" onClick={() => setEditing(who[0])}>
+                  <Avatar name={who[0].full_name} size={38} />
+                  <span className="grow">
+                    <span className="position-name">{k}</span>
+                    <strong>{displayName(who[0])}{who.length > 1 ? ` +${who.length - 1}` : ""}</strong>
+                  </span>
+                </button>
+              ) : (
+                <button key={k} className="position vacant" onClick={() => setEditing({ job_title: k })}>
+                  <span className="vacant-dot"><Icon name="plus" size={16} /></span>
+                  <span className="grow">
+                    <span className="position-name">{k}</span>
+                    <span className="muted">Vacant</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      <section className="card editor">
+        <div className="card-head">
+          <div>
+            <h2>Everyone</h2>
+            <p className="muted small editor-intro">Click a person to see or change their record.</p>
+          </div>
+          <div className="row wrap">
+            <ImportButton branchId={branch.id} kind="staff" onDone={load} />
+            <button className="primary with-icon" onClick={() => setEditing({ job_title: "" })}><Icon name="user-plus" size={16} />Add staff</button>
+          </div>
+        </div>
+        {departments.length > 0 && staff && staff.length > 0 && (
+          <div className="filter-chips" role="group" aria-label="Filter by department">
+            <button className={dept === "" ? "on" : ""} onClick={() => setDept("")}>Everyone<span className="chip-count">{staff.length}</span></button>
+            {departments.map((d) => {
+              const n = staff.filter((p) => p.department_id === d.id).length;
+              return n ? (
+                <button key={d.id} className={dept === d.id ? "on" : ""} style={hue(deptLook(String(d.name), String(d.kind)).hue)} onClick={() => setDept(d.id)}>
+                  <span className="chip-dot" />{String(d.name)}<span className="chip-count">{n}</span>
+                </button>
+              ) : null;
+            })}
+            {staff.some((p) => !p.department_id) && (
+              <button className={dept === "none" ? "on" : ""} onClick={() => setDept("none")}>No department<span className="chip-count">{staff.filter((p) => !p.department_id).length}</span></button>
+            )}
+          </div>
+        )}
+        {error && <p className="error">{error}</p>}
+        {staff === null && !error && <div className="skeleton" aria-hidden="true"><span /><span /></div>}
+        {staff?.length === 0 && <Empty icon="staff">No staff yet. Add them one by one, or upload a list from Excel.</Empty>}
+        {list.length > 0 && (
+          <div className="people-grid">
+            {list.map((p) => {
+              const dl = deptLook(p.department_name);
+              return (
+                <button key={p.user_id} className="person-card" onClick={() => setEditing(p)}>
+                  <Avatar name={p.full_name} size={54} />
+                  <div className="person-info">
+                    <strong>{displayName(p)}</strong>
+                    <span className="job">{p.job_title || (p.teaching ? "Teacher" : "Staff")}</span>
+                    <div className="chips">
+                      {p.department_name && <span className="hue-chip" style={hue(dl.hue)}><Icon name={dl.icon} size={12} stroke={2.3} />{p.department_name}</span>}
+                      {p.heads_departments.map((h) => <span key={h} className="hue-chip" style={hue("amber")}><Icon name="crown" size={12} stroke={2.3} />Head of {h}</span>)}
+                      {!p.teaching && <span className="hue-chip" style={hue("orange")}>Non-teaching</span>}
+                      {p.employment_type === "nysc" && <span className="hue-chip" style={hue("green")}>NYSC</span>}
+                    </div>
+                    {p.phone && <span className="small contact"><Icon name="phone" size={13} />{nicePhone(p.phone)}</span>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {editing && (
+        <Modal title={"user_id" in editing ? displayName(editing) : "Add staff"} onClose={() => setEditing(null)}>
+          <StaffForm
+            person={"user_id" in editing ? editing : null}
+            jobTitle={"user_id" in editing ? undefined : editing.job_title}
+            departments={departments}
+            jobTitles={options.job_titles}
+            onCancel={() => setEditing(null)}
+            onRemoveRole={(membershipId) => api.removeStaffRole(membershipId).then(() => { load(); setEditing(null); })}
+            onSubmit={async (data, extra) => {
+              if ("user_id" in editing) {
+                setStaff(await api.updateStaff(branch.id, editing.user_id, data));
+                if (extra.role) {
+                  await api.addStaff(branch.id, { ...data, phone: editing.phone ?? "", email: editing.email ?? "", role: extra.role });
+                  load();
+                }
+              } else {
+                const res = await api.addStaff(branch.id, { ...data, phone: extra.phone, email: extra.email, role: extra.role ?? "teacher" });
+                setStaff(res.staff);
+                if (res.new_login) setNewLogin(res.new_login);
+              }
+              setEditing(null);
             }}
           />
         </Modal>
@@ -282,28 +436,63 @@ export function StaffTab({ branch }: { branch: BranchDetail }) {
           <NewLoginNotice login={newLogin} onDone={() => setNewLogin(null)} />
         </Modal>
       )}
-    </section>
+    </div>
   );
 }
 
-function AddStaffForm({
-  onSubmit, onCancel,
-}: { onSubmit: (name: string, phone: string, email: string, role: StaffRole) => Promise<void>; onCancel: () => void }) {
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState<StaffRole>("teacher");
+function guessRole(job: string, teaching: boolean): StaffRole {
+  const j = job.toLowerCase();
+  if (!/vice|deputy/.test(j) && /principal|head ?teacher|head ?master|head ?mistress|rector/.test(j)) return "head";
+  if (/bursar|accountant|cashier/.test(j)) return "bursar";
+  if (/boarding|house ?master|house ?mistress|matron|house ?parent|hostel/.test(j)) return "house_parent";
+  return teaching ? "teacher" : "support";
+}
+const NON_TEACHING = /bursar|account|cook|driver|security|cleaner|gardener|nurse|matron|secretary|admin|store|electric|plumb|carpenter|librarian|technician|registrar|ict officer|porter|cashier/;
+
+function StaffForm({
+  person, jobTitle, departments, jobTitles, onSubmit, onCancel, onRemoveRole,
+}: {
+  person: StaffMember | null;
+  jobTitle?: string;
+  departments: Item[];
+  jobTitles: string[];
+  onSubmit: (data: StaffProfileIn, extra: { phone: string; email: string; role: StaffRole | null }) => Promise<void>;
+  onCancel: () => void;
+  onRemoveRole: (membershipId: string) => Promise<void>;
+}) {
+  const [v, setV] = useState({
+    title: person?.title ?? "", full_name: person?.full_name ?? "", gender: person?.gender ?? "",
+    phone: "", email: "", job_title: person?.job_title ?? jobTitle ?? "", department_id: person?.department_id ?? "",
+    teaching: person ? person.teaching : !NON_TEACHING.test((jobTitle ?? "").toLowerCase()),
+    staff_no: person?.staff_no ?? "", employment_type: person?.employment_type ?? "full_time",
+    date_joined: person?.date_joined ?? "", qualification: person?.qualification ?? "",
+  });
+  const [role, setRole] = useState<StaffRole | "">(person ? "" : guessRole(jobTitle ?? "", !NON_TEACHING.test((jobTitle ?? "").toLowerCase())));
+  const [roleTouched, setRoleTouched] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const set = (k: keyof typeof v, value: string | boolean) => {
+    setV((old) => {
+      const next = { ...old, [k]: value };
+      if (!person && !roleTouched && (k === "job_title" || k === "teaching")) setRole(guessRole(String(next.job_title), Boolean(next.teaching)));
+      return next;
+    });
+    setError("");
+  };
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (name.trim().length < 2) return setError("Enter the staff member's name.");
-    if (!phone.trim() && !email.trim()) return setError("Enter a phone number or email, so they can log in.");
-    if (email.trim() && !/^\S+@\S+\.\S+$/.test(email.trim())) return setError("That email address doesn't look right.");
+    if (v.full_name.trim().length < 2) return setError("Enter the staff member's name.");
+    if (!person && !v.phone.trim() && !v.email.trim()) return setError("Enter a phone number or email, so they can log in.");
+    if (v.email.trim() && !/^\S+@\S+\.\S+$/.test(v.email.trim())) return setError("That email address doesn't look right.");
     setBusy(true);
     try {
-      await onSubmit(name.trim(), phone.trim(), email.trim(), role);
+      await onSubmit({
+        full_name: v.full_name.trim(), title: v.title.trim() || null, gender: (v.gender || null) as StaffProfileIn["gender"],
+        job_title: v.job_title.trim() || null, department_id: v.department_id || null, teaching: v.teaching,
+        staff_no: v.staff_no.trim() || null, employment_type: v.employment_type as EmploymentType,
+        date_joined: v.date_joined || null, qualification: v.qualification.trim() || null,
+      }, { phone: v.phone.trim(), email: v.email.trim(), role: role || null });
     } catch (err) {
       setError(errorText(err));
       setBusy(false);
@@ -312,17 +501,72 @@ function AddStaffForm({
 
   return (
     <form className="stack" onSubmit={submit} noValidate>
-      <Field label="Full name"><input value={name} onChange={(e) => { setName(e.target.value); setError(""); }} autoFocus /></Field>
-      <Field label="Phone number"><input type="tel" value={phone} onChange={(e) => { setPhone(e.target.value); setError(""); }} placeholder="0803 123 4567" /></Field>
-      <Field label="Email (optional)"><input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }} /></Field>
-      <Field label="Role" hint="One person can have several roles. Add them again to give another role.">
-        <select value={role} onChange={(e) => setRole(e.target.value as StaffRole)}>
-          {(Object.keys(ROLE_LABEL) as StaffRole[]).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-        </select>
-      </Field>
+      {person && (
+        <div className="staff-summary">
+          <Avatar name={person.full_name} size={56} />
+          <div className="grow">
+            <strong>{displayName(person)}</strong>
+            <span className="block small muted">{[nicePhone(person.phone), person.email].filter(Boolean).join(" · ")}</span>
+            <div className="chips" style={{ marginTop: 6 }}>
+              {person.roles.map((r) => (
+                <span key={r.membership_id} className="hue-chip role" style={hue(ROLE_HUE[r.role] ?? "slate")}>
+                  {ROLE_LABEL[r.role]}
+                  <button type="button" className="chip-x" aria-label={`Remove ${ROLE_LABEL[r.role]} role`} onClick={() => {
+                    if (window.confirm(`Remove ${person.full_name} as ${ROLE_LABEL[r.role]}?`)) onRemoveRole(r.membership_id).catch((err) => setError(errorText(err)));
+                  }}><Icon name="close" size={12} stroke={2.4} /></button>
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="form-grid">
+        <Field label="Title">
+          <input list="staff-titles" value={v.title} onChange={(e) => set("title", e.target.value)} placeholder="Mr, Mrs, Rev Fr…" />
+        </Field>
+        <Field label="Full name"><input value={v.full_name} onChange={(e) => set("full_name", e.target.value)} autoFocus={!person} /></Field>
+        {!person && <Field label="Phone number"><input type="tel" value={v.phone} onChange={(e) => set("phone", e.target.value)} placeholder="0803 123 4567" /></Field>}
+        {!person && <Field label="Email (optional)"><input type="email" value={v.email} onChange={(e) => set("email", e.target.value)} /></Field>}
+        <Field label="Gender">
+          <select value={v.gender} onChange={(e) => set("gender", e.target.value)}>
+            <option value="">Not set</option><option value="male">Male</option><option value="female">Female</option>
+          </select>
+        </Field>
+        <Field label="Position / job title">
+          <input list="staff-jobs" value={v.job_title} onChange={(e) => set("job_title", e.target.value)} placeholder="e.g. Chemistry Teacher" />
+        </Field>
+        <Field label="Department">
+          <select value={v.department_id} onChange={(e) => set("department_id", e.target.value)}>
+            <option value="">No department</option>
+            {departments.map((d) => <option key={d.id} value={d.id}>{String(d.name)}</option>)}
+          </select>
+        </Field>
+        <Field label={person ? "Give another role (optional)" : "App access"} hint={person ? undefined : "What they can do in the app. Worked out from the position."}>
+          <select value={role} onChange={(e) => { setRole(e.target.value as StaffRole | ""); setRoleTouched(true); }}>
+            {person && <option value="">No new role</option>}
+            {(Object.keys(ROLE_LABEL) as StaffRole[]).filter((r) => !person?.roles.some((x) => x.role === r)).map((r) => (
+              <option key={r} value={r}>{ROLE_LABEL[r]}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Staff number"><input value={v.staff_no} onChange={(e) => set("staff_no", e.target.value)} /></Field>
+        <Field label="Employment">
+          <select value={v.employment_type} onChange={(e) => set("employment_type", e.target.value)}>
+            {(Object.keys(EMPLOYMENT) as EmploymentType[]).map((k) => <option key={k} value={k}>{EMPLOYMENT[k]}</option>)}
+          </select>
+        </Field>
+        <Field label="Date joined"><input type="date" value={v.date_joined} onChange={(e) => set("date_joined", e.target.value)} /></Field>
+        <Field label="Qualification"><input value={v.qualification} onChange={(e) => set("qualification", e.target.value)} placeholder="e.g. B.Sc. Ed, NCE" /></Field>
+      </div>
+      <label className="check">
+        <input type="checkbox" checked={v.teaching} onChange={(e) => set("teaching", e.target.checked)} />
+        Teaching staff
+      </label>
+      <datalist id="staff-titles">{TITLES.map((t) => <option key={t} value={t} />)}</datalist>
+      <datalist id="staff-jobs">{jobTitles.map((t) => <option key={t} value={t} />)}</datalist>
       {error && <p className="error">{error}</p>}
       <div className="row">
-        <button className="primary" disabled={busy}>Add staff</button>
+        <button className="primary" disabled={busy}>{busy ? "Saving…" : person ? "Save changes" : "Add staff"}</button>
         <button type="button" onClick={onCancel}>Cancel</button>
       </div>
     </form>

@@ -16,10 +16,10 @@ const TABS: BranchTab[] = ["students", "classes", "staff", "attendance", "facili
 
 export type SchoolTab =
   | "overview" | "students" | "attendance" | "classes" | "staff" | "facilities"
-  | "sections" | "departments" | "houses" | "grading" | "calendar" | "policies";
+  | "sections" | "departments" | "houses" | "grading" | "calendar" | "policies" | "imports";
 export const SCHOOL_TABS: SchoolTab[] = [
   "overview", "students", "attendance", "classes", "staff", "facilities",
-  "sections", "departments", "houses", "grading", "calendar", "policies",
+  "sections", "departments", "houses", "grading", "calendar", "policies", "imports",
 ];
 
 export function parse(hash: string): Route {

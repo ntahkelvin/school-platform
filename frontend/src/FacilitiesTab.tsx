@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { errorText, type BranchDetail } from "./api";
+import { api, errorText, type BranchDetail, type StudentRow } from "./api";
 import Icon from "./Icon";
 import RecordEditor, { RecordForm } from "./RecordEditor";
+import { FACILITY_LOOK, HOSTEL_LOOK } from "./look";
 import {
   FACILITY_KIND, HOSTEL_GENDER, optionsOf, records, structure, VEHICLE_KIND,
   type Bed, type Hostel, type Item, type PersonOption,
 } from "./structureApi";
-import { Empty, Field, IconButton, Modal } from "./ui";
+import { Avatar, Empty, Field, Glyph, hue, IconButton, Modal, Stat } from "./ui";
 
 /** True when the department name only repeats what the facility's name or type already says. */
 function sameIdea(dept: string, name: string, kind: string): boolean {
@@ -15,12 +16,14 @@ function sameIdea(dept: string, name: string, kind: string): boolean {
   return words(dept).some((w) => seen.has(w) || seen.has(w.replace(/s$/, "")));
 }
 
-type Totals = { facilities: number; places: number; hostels: number; rooms: number; beds: number; vehicles: number; seats: number };
+type Totals = {
+  facilities: number; places: number; hostels: number; rooms: number; beds: number; taken: number; vehicles: number; seats: number;
+};
 
 export default function FacilitiesTab({ branch }: { branch: BranchDetail }) {
   const [people, setPeople] = useState<PersonOption[]>([]);
   const [departments, setDepartments] = useState<Item[]>([]);
-  const [t, setT] = useState<Totals>({ facilities: 0, places: 0, hostels: 0, rooms: 0, beds: 0, vehicles: 0, seats: 0 });
+  const [t, setT] = useState<Totals>({ facilities: 0, places: 0, hostels: 0, rooms: 0, beds: 0, taken: 0, vehicles: 0, seats: 0 });
   const facilityApi = useMemo(() => records("branch", branch.id, "facilities"), [branch.id]);
   const vehicleApi = useMemo(() => records("branch", branch.id, "vehicles"), [branch.id]);
 
@@ -33,11 +36,11 @@ export default function FacilitiesTab({ branch }: { branch: BranchDetail }) {
 
   return (
     <div className="stack facilities-page">
-      <div className="summary-strip">
-        <div><Icon name="facilities" size={20} /><strong>{t.facilities}</strong><span>facilities{t.places ? `, room for ${t.places.toLocaleString("en-NG")}` : ""}</span></div>
-        <div><Icon name="hostel" size={20} /><strong>{t.hostels}</strong><span>{t.hostels === 1 ? "hostel" : "hostels"}{t.rooms ? `, ${t.rooms} rooms` : ""}</span></div>
-        <div><Icon name="bed" size={20} /><strong>{t.beds}</strong><span>{t.beds === 1 ? "bed" : "beds"}</span></div>
-        <div><Icon name="bus" size={20} /><strong>{t.vehicles}</strong><span>{t.vehicles === 1 ? "vehicle" : "vehicles"}{t.seats ? `, ${t.seats} seats` : ""}</span></div>
+      <div className="stat-strip">
+        <Stat icon="facilities" hue="teal" value={t.facilities} label="facilities" note={t.places ? `Room for ${t.places.toLocaleString("en-NG")}` : undefined} />
+        <Stat icon="hostel" hue="violet" value={t.hostels} label={t.hostels === 1 ? "hostel" : "hostels"} note={t.rooms ? `${t.rooms} rooms` : undefined} />
+        <Stat icon="bed" hue="indigo" value={t.beds} label={t.beds === 1 ? "bed" : "beds"} note={t.beds ? `${t.taken} taken, ${t.beds - t.taken} free` : undefined} />
+        <Stat icon="bus" hue="amber" value={t.vehicles} label={t.vehicles === 1 ? "vehicle" : "vehicles"} note={t.seats ? `${t.seats} seats` : undefined} />
       </div>
 
       <RecordEditor
@@ -45,7 +48,8 @@ export default function FacilitiesTab({ branch }: { branch: BranchDetail }) {
         noun="facility"
         intro="Classrooms, labs, library, sick bay, kitchen, halls and sports fields."
         layout="tiles"
-        icon={(f) => String(f.kind)}
+        emptyIcon="facilities"
+        look={(f) => FACILITY_LOOK[String(f.kind)] ?? FACILITY_LOOK.other}
         onItems={(list) => setT((x) => ({ ...x, facilities: list.length, places: sum(list, "capacity") }))}
         fields={[
           { key: "kind", label: "Type", type: "select", required: true, options: optionsOf(FACILITY_KIND), defaultValue: "classroom" },
@@ -58,31 +62,30 @@ export default function FacilitiesTab({ branch }: { branch: BranchDetail }) {
         people={people}
         api={facilityApi}
         reloadKey={departments.length}
-        summary={(f) => (
-          <>
-            <strong>{String(f.name)}</strong>
-            <span className="muted small block">
-              {[
-                FACILITY_KIND[f.kind as keyof typeof FACILITY_KIND],
-                f.capacity ? `Holds ${f.capacity}` : null,
-                f.department_name && !sameIdea(String(f.department_name), String(f.name), FACILITY_KIND[f.kind as keyof typeof FACILITY_KIND])
-                  ? String(f.department_name) : null,
-                f.in_charge_name ? `In charge: ${f.in_charge_name}` : null,
-              ].filter(Boolean).join(", ") || "No details yet"}
-            </span>
-          </>
-        )}
+        summary={(f) => {
+          const kind = FACILITY_KIND[f.kind as keyof typeof FACILITY_KIND];
+          const dept = f.department_name && !sameIdea(String(f.department_name), String(f.name), kind) ? String(f.department_name) : null;
+          return (
+            <>
+              <strong>{String(f.name)}</strong>
+              <span className="muted small block">{[kind, dept, f.in_charge_name ? `In charge: ${f.in_charge_name}` : null].filter(Boolean).join(" · ")}</span>
+              {f.capacity ? <span className="mini-pill"><Icon name="users" size={12} stroke={2.2} />Holds {String(f.capacity)}</span> : null}
+            </>
+          );
+        }}
         emptyText="No facilities yet."
       />
 
-      <HostelsCard branch={branch} people={people} onTotals={(h, r, b) => setT((x) => ({ ...x, hostels: h, rooms: r, beds: b }))} />
+      <HostelsCard branch={branch} people={people}
+                   onTotals={(h, r, b, taken) => setT((x) => ({ ...x, hostels: h, rooms: r, beds: b, taken }))} />
 
       <RecordEditor
         title="Vehicles"
         noun="vehicle"
         intro="School buses and other vehicles. Students are put on bus routes later."
         layout="tiles"
-        icon={() => "bus"}
+        emptyIcon="bus"
+        look={(v) => (v.kind === "bus" ? { icon: "bus", hue: "amber" } : { icon: "car", hue: "sky" })}
         onItems={(list) => setT((x) => ({ ...x, vehicles: list.length, seats: sum(list, "capacity") }))}
         fields={[
           { key: "name", label: "Name", required: true, placeholder: "e.g. Bus 1" },
@@ -100,12 +103,13 @@ export default function FacilitiesTab({ branch }: { branch: BranchDetail }) {
             <strong>{String(v.name)}</strong>
             {v.plate_number ? <span className="plate">{String(v.plate_number)}</span> : null}
             <span className="muted small block">
-              {[
-                VEHICLE_KIND[v.kind as keyof typeof VEHICLE_KIND],
-                v.capacity ? `${v.capacity} seats` : null,
-                v.driver_name ? `Driver: ${v.driver_name}${v.driver_phone ? ` (${v.driver_phone})` : ""}` : null,
-              ].filter(Boolean).join(", ")}
+              {[VEHICLE_KIND[v.kind as keyof typeof VEHICLE_KIND], v.capacity ? `${v.capacity} seats` : null].filter(Boolean).join(" · ")}
             </span>
+            {v.driver_name ? (
+              <span className="small block driver"><Icon name="user" size={13} />{String(v.driver_name)}
+                {v.driver_phone ? <a href={`tel:${String(v.driver_phone).replace(/[^\d+]/g, "")}`}>{String(v.driver_phone)}</a> : null}
+              </span>
+            ) : null}
           </>
         )}
         emptyText="No vehicles yet."
@@ -121,13 +125,16 @@ const natural = new Intl.Collator("en", { numeric: true }).compare;
 const bedKey = (label: string) => label.replace(/ top$/i, " 1").replace(/ bottom$/i, " 2");
 const sortBeds = (beds: Bed[]) => [...beds].sort((a, b) => natural(bedKey(a.label), bedKey(b.label)));
 const shortLabel = (label: string) => label.replace(/^Bed /i, "").replace(/^Bunk (\d+) top$/i, "$1T").replace(/^Bunk (\d+) bottom$/i, "$1B");
+const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
 
 function HostelsCard({ branch, people, onTotals }: {
-  branch: BranchDetail; people: PersonOption[]; onTotals: (hostels: number, rooms: number, beds: number) => void;
+  branch: BranchDetail; people: PersonOption[]; onTotals: (hostels: number, rooms: number, beds: number, taken: number) => void;
 }) {
   const hostelApi = useMemo(() => records("branch", branch.id, "hostels"), [branch.id]);
   const [hostels, setHostels] = useState<Hostel[] | null>(null);
+  const [boarders, setBoarders] = useState<StudentRow[]>([]);
   const [editing, setEditing] = useState<Hostel | "new" | null>(null);
+  const [assigning, setAssigning] = useState<{ hostel: Hostel; bed: Bed; place: string } | null>(null);
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
@@ -135,10 +142,16 @@ function HostelsCard({ branch, people, onTotals }: {
   }, [hostelApi]);
   useEffect(load, [load]);
   useEffect(() => {
-    if (hostels) onTotals(hostels.length, hostels.reduce((n, h) => n + h.rooms.length, 0), hostels.reduce((n, h) => n + h.beds.length, 0));
+    api.students(branch.id, {}).then((list) => setBoarders(list.filter((s) => s.boarding_status === "boarder"))).catch(() => {});
+  }, [branch.id]);
+  useEffect(() => {
+    if (!hostels) return;
+    const beds = hostels.flatMap((h) => h.beds);
+    onTotals(hostels.length, hostels.reduce((n, h) => n + h.rooms.length, 0), beds.length, beds.filter((b) => b.student_id).length);
   }, [hostels]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const replace = (h: Hostel) => setHostels((list) => (list ?? []).map((x) => (x.id === h.id ? h : x)));
+  const bedOf = new Map((hostels ?? []).flatMap((h) => h.beds.filter((b) => b.student_id).map((b) => [b.student_id as string, { bed: b, hostel: h }] as const)));
 
   return (
     <section className="card editor">
@@ -147,7 +160,7 @@ function HostelsCard({ branch, people, onTotals }: {
           <h2>Hostels</h2>
           <p className="muted small editor-intro">
             {branch.has_boarding
-              ? "Boarding houses with their rooms and beds. Boarders are given beds in the boarding module."
+              ? "Point at a bed to see who sleeps there. Click a bed to give it to a boarder."
               : "This is a day school. To use hostels, change its type to boarding or day and boarding with Rename or change type."}
           </p>
         </div>
@@ -161,6 +174,7 @@ function HostelsCard({ branch, people, onTotals }: {
             key={h.id}
             hostel={h}
             onChanged={replace}
+            onPick={(bed, place) => setAssigning({ hostel: h, bed, place })}
             onEdit={() => setEditing(h)}
             onDelete={() => {
               if (window.confirm(`Delete ${h.name} with all its rooms and beds?`))
@@ -191,19 +205,62 @@ function HostelsCard({ branch, people, onTotals }: {
           />
         </Modal>
       )}
+      {assigning && (
+        <AssignBed
+          {...assigning}
+          boarders={boarders}
+          bedOf={bedOf}
+          onClose={() => setAssigning(null)}
+          onDone={() => { setAssigning(null); load(); }}
+        />
+      )}
     </section>
   );
 }
 
+function BedButton({ bed, place, managing, onClick }: { bed: Bed; place: string; managing: boolean; onClick: () => void }) {
+  const taken = !!bed.student_id;
+  return (
+    <button
+      className={`bed${/bottom$/i.test(bed.label) ? " lower" : ""}${taken ? " taken" : ""}${managing ? " removing" : ""}`}
+      aria-label={managing ? `Remove ${bed.label}` : taken ? `${bed.label}: ${bed.student_name}` : `${bed.label}: empty`}
+      title={managing ? `Remove ${bed.label}` : undefined}
+      onClick={onClick}
+    >
+      <span className="bed-label">{shortLabel(bed.label)}</span>
+      {taken && <span className="bed-who">{initialsOf(bed.student_name ?? "")}</span>}
+      {!managing && (
+        <span className="bed-tip" role="tooltip">
+          <span className="bed-tip-place">{place} · {bed.label}</span>
+          {taken ? (
+            <span className="bed-tip-person">
+              <Avatar name={bed.student_name ?? ""} size={34} />
+              <span>
+                <strong>{bed.student_name}</strong>
+                <span className="block">{[bed.student_class, bed.student_admission_no].filter(Boolean).join(" · ")}</span>
+              </span>
+            </span>
+          ) : (
+            <span className="bed-tip-empty">Empty. Click to give it to a boarder.</span>
+          )}
+        </span>
+      )}
+    </button>
+  );
+}
+
 function HostelBlock({
-  hostel, onChanged, onEdit, onDelete,
-}: { hostel: Hostel; onChanged: (h: Hostel) => void; onEdit: () => void; onDelete: () => void }) {
+  hostel, onChanged, onPick, onEdit, onDelete,
+}: {
+  hostel: Hostel; onChanged: (h: Hostel) => void; onPick: (bed: Bed, place: string) => void; onEdit: () => void; onDelete: () => void;
+}) {
   const [managing, setManaging] = useState(false);
   const [roomName, setRoomName] = useState("");
   const [count, setCount] = useState("10");
   const [roomId, setRoomId] = useState("");
   const [bunks, setBunks] = useState(false);
   const [error, setError] = useState("");
+  const look = HOSTEL_LOOK[hostel.gender] ?? HOSTEL_LOOK.mixed;
 
   const run = (p: Promise<Hostel>) => p.then((h) => { onChanged(h); setError(""); }).catch((err) => setError(errorText(err)));
 
@@ -225,17 +282,17 @@ function HostelBlock({
   }));
   const loose = sortBeds(hostel.beds.filter((b) => !b.room_id));
   if (loose.length || hostel.rooms.length === 0) places.push({ id: null, name: hostel.rooms.length ? "Not in a room" : "Hall", beds: loose });
+  const taken = hostel.beds.filter((b) => b.student_id).length;
+  const pct = hostel.beds.length ? Math.round((100 * taken) / hostel.beds.length) : 0;
 
   return (
-    <article className="hostel">
+    <article className="hostel" style={hue(look.hue)}>
       <header className="hostel-head">
-        <span className="item-icon"><Icon name="hostel" size={20} /></span>
+        <Glyph icon="hostel" hue={look.hue} size={48} />
         <div className="grow">
           <h3>{hostel.name}</h3>
-          <span className="muted small">
-            {HOSTEL_GENDER[hostel.gender]}
-            {hostel.house_parent_name ? `, house parent ${hostel.house_parent_name}` : ""}
-          </span>
+          <span className="hue-chip"><Icon name={look.icon} size={12} stroke={2.4} />{HOSTEL_GENDER[hostel.gender]}</span>
+          {hostel.house_parent_name && <span className="muted small"> House parent {hostel.house_parent_name}</span>}
         </div>
         <div className="item-actions">
           <IconButton icon="edit" label={`Edit ${hostel.name}`} onClick={onEdit} />
@@ -243,9 +300,12 @@ function HostelBlock({
         </div>
       </header>
 
-      <div className="hostel-stats">
-        <span><strong>{hostel.rooms.length || "No"}</strong> {hostel.rooms.length === 1 ? "room" : "rooms"}</span>
-        <span><strong>{hostel.beds.length}</strong> {hostel.beds.length === 1 ? "bed" : "beds"}</span>
+      <div className="occupancy">
+        <div className="occupancy-text">
+          <span><strong>{taken}</strong> of {hostel.beds.length} beds taken</span>
+          <span className="muted">{hostel.rooms.length ? `${hostel.rooms.length} ${hostel.rooms.length === 1 ? "room" : "rooms"}` : "One open hall"}</span>
+        </div>
+        <div className="occupancy-bar"><span style={{ width: `${pct}%` }} /></div>
       </div>
 
       {hostel.beds.length === 0 && !managing ? (
@@ -254,7 +314,7 @@ function HostelBlock({
         places.map((p) => (
           <div key={p.id ?? "loose"} className="room">
             <div className="room-head">
-              <span className="small"><strong>{p.name}</strong> <span className="muted">{p.beds.length} {p.beds.length === 1 ? "bed" : "beds"}</span></span>
+              <span className="small"><strong>{p.name}</strong> <span className="muted">{p.beds.filter((b) => b.student_id).length}/{p.beds.length}</span></span>
               {managing && p.id && (
                 <button className="ghost small" onClick={() => {
                   if (window.confirm(`Delete ${p.name} and its ${p.beds.length} beds?`)) run(structure.deleteRoom(p.id as string));
@@ -263,16 +323,8 @@ function HostelBlock({
             </div>
             <div className="bed-map">
               {p.beds.map((b) => (
-                <button
-                  key={b.id}
-                  className={`bed${/bottom$/i.test(b.label) ? " lower" : ""}`}
-                  title={managing ? `Remove ${b.label}` : b.label}
-                  aria-label={managing ? `Remove ${b.label}` : b.label}
-                  disabled={!managing}
-                  onClick={() => run(structure.deleteBed(b.id))}
-                >
-                  {shortLabel(b.label)}
-                </button>
+                <BedButton key={b.id} bed={b} place={p.name} managing={managing}
+                           onClick={() => (managing ? run(structure.deleteBed(b.id)) : onPick(b, p.name))} />
               ))}
             </div>
           </div>
@@ -307,9 +359,83 @@ function HostelBlock({
         </div>
       )}
       {error && <p className="error">{error}</p>}
-      <button className="manage-toggle" onClick={() => setManaging(!managing)} aria-expanded={managing}>
-        {managing ? "Done" : "Rooms and beds"}
-      </button>
+      <div className="hostel-foot">
+        <span className="legend"><span className="bed-dot" />Empty</span>
+        <span className="legend"><span className="bed-dot taken" />Taken</span>
+        <button className="manage-toggle" onClick={() => setManaging(!managing)} aria-expanded={managing}>
+          <Icon name={managing ? "close" : "bed"} size={15} />{managing ? "Done" : "Rooms and beds"}
+        </button>
+      </div>
     </article>
+  );
+}
+
+function AssignBed({ hostel, bed, place, boarders, bedOf, onClose, onDone }: {
+  hostel: Hostel; bed: Bed; place: string; boarders: StudentRow[];
+  bedOf: Map<string, { bed: Bed; hostel: Hostel }>; onClose: () => void; onDone: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const wanted = hostel.gender === "boys" ? "male" : hostel.gender === "girls" ? "female" : null;
+  const fits = boarders
+    .filter((s) => !wanted || s.gender === wanted)
+    .filter((s) => s.id !== bed.student_id)
+    .filter((s) => !q || `${s.first_name} ${s.last_name} ${s.admission_no} ${s.class_name ?? ""}`.toLowerCase().includes(q.toLowerCase()))
+    .sort((a, b) => Number(bedOf.has(a.id)) - Number(bedOf.has(b.id)) || natural(a.last_name, b.last_name));
+
+  const save = (studentId: string | null) => {
+    setBusy(true);
+    structure.assignBed(bed.id, studentId).then(onDone).catch((err) => { setError(errorText(err)); setBusy(false); });
+  };
+
+  return (
+    <Modal title={`${hostel.name} · ${place} · ${bed.label}`} onClose={onClose}>
+      <div className="stack">
+        {bed.student_id ? (
+          <div className="occupant" style={hue(HOSTEL_LOOK[hostel.gender]?.hue ?? "violet")}>
+            <Avatar name={bed.student_name ?? ""} size={48} />
+            <div className="grow">
+              <span className="muted small">Sleeps here now</span>
+              <strong className="block">{bed.student_name}</strong>
+              <span className="small muted">{[bed.student_class, bed.student_admission_no].filter(Boolean).join(" · ")}</span>
+            </div>
+            <button className="danger-outline" disabled={busy} onClick={() => save(null)}>Empty this bed</button>
+          </div>
+        ) : (
+          <p className="small muted">This bed is empty. Choose a boarder to sleep here.</p>
+        )}
+        <label className="search">
+          <Icon name="search" size={17} />
+          <input aria-label="Find a boarder" placeholder="Find a boarder by name, class or number" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+        </label>
+        {error && <p className="error">{error}</p>}
+        {fits.length === 0 ? (
+          <Empty icon="students">
+            {boarders.length === 0 ? "No boarders yet. Mark students as boarders when you add them." : "No boarders match."}
+          </Empty>
+        ) : (
+          <ul className="pick-list">
+            {fits.slice(0, 60).map((s) => {
+              const has = bedOf.get(s.id);
+              return (
+                <li key={s.id}>
+                  <button disabled={busy} onClick={() => save(s.id)}>
+                    <Avatar name={`${s.first_name} ${s.last_name}`} size={36} />
+                    <span className="grow">
+                      <strong>{s.first_name} {s.last_name}</strong>
+                      <span className="small muted block">{[s.class_name, s.admission_no].filter(Boolean).join(" · ")}</span>
+                    </span>
+                    <span className={`bed-status${has ? "" : " free"}`}>
+                      {has ? `${has.hostel.name === hostel.name ? "" : `${has.hostel.name}, `}${has.bed.label} (move)` : "No bed yet"}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </Modal>
   );
 }

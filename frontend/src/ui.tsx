@@ -1,7 +1,40 @@
 // Small building blocks used by many screens.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { NewLogin } from "./api";
 import Icon from "./Icon";
+import { hueOf, type Hue } from "./look";
+
+/** Style that sets the colour used by .glyph, .hue-* and friends. */
+export function hue(h: Hue | string, colour?: string | null): CSSProperties {
+  return { "--hue": colour || `var(--h-${h})` } as CSSProperties;
+}
+
+/** A coloured icon tile. Solid ones have a gradient; soft ones a light tint. */
+export function Glyph({ icon, hue: h, colour, size = 40, soft = false }: {
+  icon: string; hue: Hue | string; colour?: string | null; size?: number; soft?: boolean;
+}) {
+  return (
+    <span className={`glyph${soft ? " soft" : ""}`} style={{ ...hue(h, colour), width: size, height: size, borderRadius: size * 0.3 }} aria-hidden="true">
+      <Icon name={icon} size={Math.round(size * 0.5)} stroke={soft ? 2 : 2.1} />
+    </span>
+  );
+}
+
+/** A small figure with a coloured icon, e.g. "48 beds". */
+export function Stat({ icon, hue: h, value, label, note }: {
+  icon: string; hue: Hue; value: ReactNode; label: ReactNode; note?: ReactNode;
+}) {
+  return (
+    <div className="stat-tile" style={hue(h)}>
+      <Glyph icon={icon} hue={h} size={44} />
+      <div className="stat-text">
+        <strong>{value}</strong>
+        <span>{label}</span>
+        {note && <span className="stat-note">{note}</span>}
+      </div>
+    </div>
+  );
+}
 
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   useEffect(() => {
@@ -65,7 +98,7 @@ export function Field({ label, children, hint }: { label: string; children: Reac
 export function Empty({ children, icon }: { children: ReactNode; icon?: string }) {
   return (
     <div className="empty muted">
-      {icon && <span className="empty-icon"><Icon name={icon} size={22} /></span>}
+      {icon && <Glyph icon={icon} hue="slate" size={48} soft />}
       <span>{children}</span>
     </div>
   );
@@ -81,9 +114,20 @@ export function IconButton({ icon, label, onClick, danger = false }: {
   );
 }
 
-/** Round initials badge for a person. */
+/** Round initials badge for a person, in a colour that stays the same for that name. */
 export function Avatar({ name, size = 36 }: { name: string; size?: number }) {
-  const parts = name.replace(/^(mr|mrs|ms|miss|dr|fr|rev|chief|prof)\.?\s+/i, "").split(/[\s,]+/).filter(Boolean);
+  const parts = name.replace(/^(mr|mrs|ms|miss|dr|fr|rev|chief|prof|sr|br)\.?\s+/i, "").split(/[\s,]+/).filter(Boolean);
   const text = ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase();
-  return <span className="avatar" style={{ width: size, height: size, fontSize: size * 0.38 }} aria-hidden="true">{text}</span>;
+  return (
+    <span className="avatar" style={{ ...hue(hueOf(name)), width: size, height: size, fontSize: size * 0.38 }} aria-hidden="true">
+      {text}
+    </span>
+  );
+}
+
+/** +2348031234567 -> 0803 123 4567 (Nigerian numbers); anything else as it is. */
+export function nicePhone(phone: string | null | undefined): string {
+  if (!phone) return "";
+  const m = /^\+234(\d{3})(\d{3})(\d{4})$/.exec(phone);
+  return m ? `0${m[1]} ${m[2]} ${m[3]}` : phone;
 }

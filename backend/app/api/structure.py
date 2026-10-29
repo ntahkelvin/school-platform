@@ -113,7 +113,7 @@ def staff_options(school_id: uuid.UUID, user: User = Depends(current_user), db: 
     school = owned_school(db, user, school_id)
     rows = db.scalars(select(Membership).where(
         Membership.group_id == school.group_id,
-        Membership.role.in_([Role.owner, Role.head, Role.bursar, Role.teacher, Role.house_parent]),
+        Membership.role.in_([Role.owner, Role.head, Role.bursar, Role.teacher, Role.house_parent, Role.support]),
         (Membership.school_id == school.id) | (Membership.role == Role.owner),
     )).all()
     people: dict[uuid.UUID, PersonOption] = {}
@@ -696,6 +696,11 @@ class BedOut(BaseModel):
     id: uuid.UUID
     label: str
     room_id: uuid.UUID | None
+    student_id: uuid.UUID | None = None
+    student_name: str | None = None
+    student_class: str | None = None
+    student_admission_no: str | None = None
+    student_gender: str | None = None
 
 
 class HostelOut(Out):
@@ -770,25 +775,29 @@ class BedsIn(BaseModel):
     bunks: bool = False  # label as Bunk 1 Top / Bunk 1 Bottom
 
 
+def make_beds(hostel: Hostel, count: int, room_id: uuid.UUID | None, bunks: bool) -> None:
+    """Adds beds, numbered after any already in that room (or in the hostel, if no room)."""
+    labels = {b.label for b in hostel.beds if b.room_id == room_id}
+    position = max((b.position for b in hostel.beds), default=-1) + 1
+    n, made = 1, 0
+    while made < count:
+        new = [f"Bunk {n} top", f"Bunk {n} bottom"] if bunks else [f"Bed {n}"]
+        if not labels & set(new):
+            for label in new:
+                if made < count:
+                    hostel.beds.append(Bed(label=label, room_id=room_id, position=position))
+                    position += 1
+                    made += 1
+        n += 1
+
+
 @router.post("/hostels/{hostel_id}/beds", response_model=HostelOut, status_code=201)
 def add_beds(hostel_id: uuid.UUID, data: BedsIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Adds beds, numbered after any already in that room (or in the hostel, if no room)."""
     hostel = _own_hostel(db, user, hostel_id)
     if data.room_id and not any(r.id == data.room_id for r in hostel.rooms):
         raise bad("That room isn't in this hostel")
-    same_place = [b for b in hostel.beds if b.room_id == data.room_id]
-    labels = {b.label for b in same_place}
-    position = max((b.position for b in hostel.beds), default=-1) + 1
-    n, made = 1, 0
-    while made < data.count:
-        new = [f"Bunk {n} top", f"Bunk {n} bottom"] if data.bunks else [f"Bed {n}"]
-        if not labels & set(new):
-            for label in new:
-                if made < data.count:
-                    hostel.beds.append(Bed(label=label, room_id=data.room_id, position=position))
-                    position += 1
-                    made += 1
-        n += 1
+    make_beds(hostel, data.count, data.room_id, data.bunks)
     db.commit()
     db.refresh(hostel)
     return hostel
@@ -804,6 +813,49 @@ def delete_bed(bed_id: uuid.UUID, user: User = Depends(current_user), db: Sessio
     db.commit()
     db.refresh(hostel)
     return hostel
+
+
+def put_in_bed(db: Session, hostel: Hostel, bed: Bed, student_id: uuid.UUID, replace: bool = False) -> None:
+    """Gives a boarder this bed, moving them out of any other bed."""
+    from app.models.people import BoardingStatus, Gender, Student, StudentStatus
+
+    student = db.get(Student, student_id)
+    if not student or student.branch_id != hostel.branch_id:
+        raise bad("That student isn't at this school")
+    if student.status != StudentStatus.active:
+        raise bad(f"{student.full_name} has left the school")
+    if student.boarding_status != BoardingStatus.boarder:
+        raise bad(f"{student.full_name} is a day student. Make them a boarder first.")
+    wanted = {HostelGender.boys: Gender.male, HostelGender.girls: Gender.female}.get(hostel.gender)
+    if wanted and student.gender != wanted:
+        raise bad(f"{hostel.name} is for {hostel.gender.value}")
+    if bed.student_id and bed.student_id != student.id and not replace:
+        raise bad(f"{bed.label} already has {bed.student_name} in it")
+    old = db.query(Bed).filter(Bed.student_id == student.id, Bed.id != bed.id).first()
+    if old:
+        old.student_id = None
+        db.flush()
+    bed.student_id = student.id
+
+
+class BedStudentIn(BaseModel):
+    student_id: uuid.UUID | None = None  # None empties the bed
+
+
+@router.put("/beds/{bed_id}/student", response_model=HostelOut)
+def assign_bed(bed_id: uuid.UUID, data: BedStudentIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Puts a boarder in a bed (moving them out of any other bed), or empties the bed."""
+    bed = db.get(Bed, bed_id)
+    if not bed:
+        raise not_found("Bed")
+    hostel = _own_hostel(db, user, bed.hostel_id)
+    if data.student_id is None:
+        bed.student_id = None
+    else:
+        put_in_bed(db, hostel, bed, data.student_id, replace=True)
+    db.commit()
+    db.expire_all()
+    return db.get(Hostel, hostel.id)
 
 
 # ======================= Overview counts =======================

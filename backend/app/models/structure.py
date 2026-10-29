@@ -322,6 +322,29 @@ class Bed(IdMixin, Base):
     room_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("hostel_rooms.id", ondelete="CASCADE"), index=True)
     label: Mapped[str] = mapped_column(String(30))
     position: Mapped[int] = mapped_column(Integer, default=0)
+    # The boarder sleeping here (one bed per boarder).
+    student_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("students.id", ondelete="SET NULL"), unique=True, index=True
+    )
+
+    student = relationship("Student", lazy="joined")
+
+    @property
+    def student_name(self) -> str | None:
+        return self.student.full_name if self.student else None
+
+    @property
+    def student_class(self) -> str | None:
+        s = self.student
+        return s.school_class.name if s and s.school_class else None
+
+    @property
+    def student_admission_no(self) -> str | None:
+        return self.student.admission_no if self.student else None
+
+    @property
+    def student_gender(self) -> str | None:
+        return self.student.gender.value if self.student else None
 
 
 class VehicleKind(str, enum.Enum):

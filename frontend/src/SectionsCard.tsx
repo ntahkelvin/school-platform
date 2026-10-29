@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { api, errorText } from "./api";
 import { records, structure, type PersonOption, type Scale, type Scheme, type Section } from "./structureApi";
-import { Empty, Field, Modal } from "./ui";
+import { Avatar, Empty, Field, Glyph, hue, IconButton, Modal } from "./ui";
+import Icon from "./Icon";
+import { sectionLook, STAGE_LOOK, stageOf } from "./look";
 
 const STANDARD = ["Nursery", "Primary", "Junior Secondary", "Senior Secondary"];
 
@@ -29,55 +31,73 @@ export default function SectionsCard({ schoolId, people }: { schoolId: string; p
   const unused = levels.filter((l) => !used.has(l));
 
   return (
-    <section className="card">
+    <section className="card editor">
       <div className="card-head">
-        <h2>Sections</h2>
+        <div>
+          <h2>Sections</h2>
+          <p className="muted small editor-intro">
+            A section is a part of the school with its own class levels, head, grading and CA / exam split, such as Primary or Senior Secondary.
+          </p>
+        </div>
         <div className="row wrap">
-          <button onClick={() => setPicking(true)}>Add standard sections</button>
-          <button className="primary" onClick={() => setEditing("new")}>Add section</button>
+          <button className="with-icon" onClick={() => setPicking(true)}><Icon name="sparkle" size={16} />Add standard sections</button>
+          <button className="primary with-icon" onClick={() => setEditing("new")}><Icon name="plus" size={16} />Add section</button>
         </div>
       </div>
-      <p className="muted small">
-        A section is a part of the school with its own class levels, head, grading and CA / exam split, such as Primary or
-        Senior Secondary.
-      </p>
       {error && <p className="error">{error}</p>}
-      {sections?.length === 0 && <Empty>No sections yet. Click Add standard sections to choose from the usual ones.</Empty>}
+      {sections === null && !error && <div className="skeleton" aria-hidden="true"><span /><span /></div>}
+      {sections?.length === 0 && <Empty icon="sections">No sections yet. Click Add standard sections to choose from the usual ones.</Empty>}
       {sections && sections.length > 0 && (
-        <ul className="list">
-          {sections.map((s) => (
-            <li key={s.id}>
-              <div className="grow">
-                <strong>{s.name}</strong>
-                <span className="muted small block">
-                  {s.levels.length ? s.levels.join(", ") : "No class levels yet"}
-                </span>
-                <span className="muted small block">
-                  {[
-                    s.head_name ? `Head: ${s.head_name}` : "No head yet",
-                    scales.find((x) => x.id === s.grading_scale_id)?.name ?? "No grading scale",
-                    schemes.find((x) => x.id === s.assessment_scheme_id)?.name ?? "No CA / exam split",
-                  ].join(" · ")}
-                </span>
-              </div>
-              <div className="row">
-                <button className="ghost" onClick={() => setEditing(s)}>Edit</button>
-                <button
-                  className="ghost"
-                  onClick={() => {
-                    if (window.confirm(`Delete the ${s.name} section? Classes and students are not deleted.`))
-                      sectionApi.remove(s.id).then(load).catch((err) => setError(errorText(err)));
-                  }}
-                >
-                  Delete
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <div className="section-grid">
+          {sections.map((s) => {
+            const look = sectionLook(s.name, s.levels);
+            const scale = scales.find((x) => x.id === s.grading_scale_id)?.name;
+            const scheme = schemes.find((x) => x.id === s.assessment_scheme_id)?.name;
+            return (
+              <article key={s.id} className="section-card" style={hue(look.hue)}>
+                <header className="section-band">
+                  <Glyph icon={look.icon} hue={look.hue} size={46} />
+                  <div className="grow">
+                    <h3>{s.name}</h3>
+                    <span className="small">{s.levels.length} {s.levels.length === 1 ? "class level" : "class levels"}</span>
+                  </div>
+                  <div className="item-actions">
+                    <IconButton icon="edit" label={`Edit ${s.name}`} onClick={() => setEditing(s)} />
+                    <IconButton icon="trash" label={`Delete ${s.name}`} danger onClick={() => {
+                      if (window.confirm(`Delete the ${s.name} section? Classes and students are not deleted.`))
+                        sectionApi.remove(s.id).then(load).catch((err) => setError(errorText(err)));
+                    }} />
+                  </div>
+                </header>
+                <div className="level-chips">
+                  {s.levels.length ? s.levels.map((l) => <span key={l} className="level-chip">{l}</span>) : <span className="muted small">No class levels yet</span>}
+                </div>
+                <dl className="section-facts">
+                  <div>
+                    <dt>Head</dt>
+                    <dd>{s.head_name ? <span className="person"><Avatar name={s.head_name} size={26} />{s.head_name}</span> : <span className="muted">Nobody yet</span>}</dd>
+                  </div>
+                  <div>
+                    <dt><Icon name="award" size={14} />Grading</dt>
+                    <dd>{scale ?? <span className="muted">Not set</span>}</dd>
+                  </div>
+                  <div>
+                    <dt><Icon name="clipboard" size={14} />CA / exam</dt>
+                    <dd>{scheme ?? <span className="muted">Not set</span>}</dd>
+                  </div>
+                </dl>
+              </article>
+            );
+          })}
+        </div>
       )}
       {sections && unused.length > 0 && sections.length > 0 && (
-        <p className="muted small">Class levels not in any section yet: {unused.join(", ")}</p>
+        <div className="unused">
+          <span className="small muted">Class levels not in any section yet:</span>
+          <div className="level-chips">
+            {unused.map((l) => <span key={l} className="level-chip spare" style={hue(STAGE_LOOK[stageOf(l)].hue)}>{l}</span>)}
+          </div>
+        </div>
       )}
 
       {picking && (
