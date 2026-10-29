@@ -111,7 +111,22 @@ export interface Me {
   full_name: string;
   email: string | null;
   phone: string | null;
+  must_change_password?: boolean;
   memberships: { role: string; group_id: string; school_id: string | null; branch_id: string | null }[];
+}
+export interface LoginInfo {
+  user_id: string;
+  full_name: string;
+  title: string | null;
+  username: string;
+  phone: string | null;
+  email: string | null;
+  roles: string[];
+  kind: "staff" | "board" | "parent" | "student";
+  is_active: boolean;
+  must_change_password: boolean;
+  last_login_at: string | null;
+  is_admin: boolean;
 }
 export interface Term {
   id: string;
@@ -357,6 +372,14 @@ export const api = {
     send<{ staff: StaffMember[]; new_login: NewLogin | null }>("POST", `/api/branches/${branchId}/staff`, data),
   updateStaff: (branchId: string, userId: string, data: StaffProfileIn) =>
     send<StaffMember[]>("PUT", `/api/branches/${branchId}/staff/${userId}`, data),
+  logins: (schoolId: string) => get<LoginInfo[]>(`/api/schools/${schoolId}/logins`),
+  loginInfo: (schoolId: string, userId: string) => get<LoginInfo>(`/api/schools/${schoolId}/logins/${userId}`),
+  resetPassword: (schoolId: string, userId: string, password?: string) =>
+    send<NewLogin>("POST", `/api/schools/${schoolId}/logins/${userId}/reset-password`, password ? { password } : {}),
+  setLoginActive: (schoolId: string, userId: string, active: boolean) =>
+    send<LoginInfo>("PUT", `/api/schools/${schoolId}/logins/${userId}/active`, { active }),
+  changePassword: (current_password: string, new_password: string) =>
+    send<void>("POST", "/api/me/password", { current_password, new_password }),
   staffOptions: () => get<{ key_positions: string[]; job_titles: string[] }>("/api/staff-options"),
   importKinds: (branchId: string) => get<ImportKind[]>(`/api/branches/${branchId}/imports`),
   importFile: (branchId: string, kind: string, file: File, commit: boolean) => {

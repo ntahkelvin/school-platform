@@ -49,7 +49,7 @@ def find_or_create_user(
 
     password = temporary_password()
     pending = deferred_hashes.get()
-    user = User(full_name=full_name.strip(), phone=phone, email=email,
+    user = User(full_name=full_name.strip(), phone=phone, email=email, must_change_password=True,
                 password_hash="!pending" if pending is not None else hash_password(password))
     if pending is not None:
         pending.append((user, password))

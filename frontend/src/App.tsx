@@ -7,6 +7,7 @@ import StudentPage from "./StudentPage";
 import RegisterPage from "./RegisterPage";
 import OrgPage from "./OrgPage";
 import BoardView from "./BoardView";
+import { ChoosePassword } from "./Logins";
 import { go, useRoute, type BranchTab } from "./router";
 import { cache, isNetworkError } from "./offline";
 
@@ -40,6 +41,9 @@ export default function App() {
 
   if (checking) return <div className="center muted">Loading…</div>;
   if (!me) return <Login onLoggedIn={setMe} />;
+
+  if (me.must_change_password)
+    return <ChoosePassword me={me} onLogout={logout} onDone={() => setMe({ ...me, must_change_password: false })} />;
 
   const common = { me, onLogout: logout };
   // Board members who don't run a school only ever see the read-only board view.

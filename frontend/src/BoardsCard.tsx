@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { errorText, type NewLogin } from "./api";
 import { org, type Board, type BoardMember, type BoardScope } from "./orgApi";
-import { Empty, Field, Modal, NewLoginNotice } from "./ui";
+import { LoginPanel } from "./Logins";
+import { Empty, Field, Modal, NewLoginNotice, nicePhone } from "./ui";
 
 function niceDate(iso: string | null): string {
   return iso ? new Date(iso + "T00:00:00").toLocaleDateString("en-GB", { month: "short", year: "numeric" }) : "";
@@ -65,12 +66,12 @@ export default function BoardsCard({ scope, title, suggestedName, intro }: {
                   <div className="grow">
                     <strong>{m.full_name}</strong> <span className="tag">{m.position}</span>
                     <span className="muted small block">
-                      {[m.phone, m.email].filter(Boolean).join(" · ")}
+                      {[nicePhone(m.phone), m.email].filter(Boolean).join(" · ")}
                       {(m.term_start || m.term_end) && ` · Term: ${niceDate(m.term_start) || "?"} to ${niceDate(m.term_end) || "?"}`}
                     </span>
                   </div>
                   <div className="row">
-                    <button className="ghost" onClick={() => setEditing(m)}>Edit</button>
+                    <button className="ghost" onClick={() => setEditing(m)}>{scope.kind === "school" ? "Edit or login" : "Edit"}</button>
                     <button className="ghost" onClick={() => {
                       if (window.confirm(`Remove ${m.full_name} from ${b.name}?`)) org.removeMember(m.id).then(replace).catch((err) => setError(errorText(err)));
                     }}>Remove</button>
@@ -106,6 +107,7 @@ export default function BoardsCard({ scope, title, suggestedName, intro }: {
               setEditing(null);
             }}
           />
+          {scope.kind === "school" && <div style={{ marginTop: 16 }}><LoginPanel schoolId={scope.id} userId={editing.user_id} /></div>}
         </Modal>
       )}
       {newLogin && (

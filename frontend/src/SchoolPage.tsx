@@ -7,6 +7,7 @@ import {
 } from "./api";
 import AttendanceTab from "./AttendanceTab";
 import BulkPage, { ImportButton } from "./Bulk";
+import LoginsPage from "./Logins";
 import { ClassesTab, StaffTab, StudentsTab } from "./DailyTabs";
 import FacilitiesTab from "./FacilitiesTab";
 import Layout from "./Layout";
@@ -45,6 +46,7 @@ const TAB_LABEL: Record<SchoolTab, string> = {
   calendar: "Calendar",
   policies: "Rules and policies",
   imports: "Bulk upload",
+  logins: "Logins and passwords",
 };
 
 export default function SchoolPage({
@@ -75,6 +77,8 @@ export default function SchoolPage({
   const loadClasses = useCallback(() => {
     if (school?.campus_id) api.classes(school.campus_id).then(setClasses).catch(() => {});
   }, [school?.campus_id]);
+  // Figures can change on other pages (an upload, say), so fetch them fresh on every page.
+  useEffect(() => { loadClasses(); }, [tab, loadClasses]);
 
   return (
     <Layout wide me={me} onLogout={onLogout} crumbs={[{ label: "Home", href: "#/" }, { label: school?.name ?? "School" }]}>
@@ -128,7 +132,8 @@ export default function SchoolPage({
           )}
           {tab === "calendar" && <CalendarTab school={school} people={people} />}
           {tab === "policies" && <PoliciesTab schoolId={school.id} people={people} />}
-          {campus && tab === "imports" && <BulkPage branchId={campus.id} />}
+          {tab === "logins" && <LoginsPage schoolId={school.id} />}
+          {campus && tab === "imports" && <BulkPage branchId={campus.id} onChanged={() => { loadClasses(); load(); }} />}
             </div>
           </div>
         </>
@@ -175,7 +180,7 @@ function SchoolHero({ school, profile, onRename, onManage }: {
 
 const NAV_GROUPS: { label: string; tabs: SchoolTab[] }[] = [
   { label: "Daily", tabs: ["overview", "students", "attendance", "classes", "staff", "facilities"] },
-  { label: "Set-up", tabs: ["sections", "departments", "houses", "grading", "calendar", "policies", "imports"] },
+  { label: "Set-up", tabs: ["sections", "departments", "houses", "grading", "calendar", "policies", "imports", "logins"] },
 ];
 
 function SchoolNav({ schoolId, tab }: { schoolId: string; tab: SchoolTab }) {

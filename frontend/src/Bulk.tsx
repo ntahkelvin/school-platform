@@ -241,7 +241,7 @@ export function ImportButton({ branchId, kind, label, onDone }: { branchId: stri
   );
 }
 
-export default function BulkPage({ branchId }: { branchId: string }) {
+export default function BulkPage({ branchId, onChanged }: { branchId: string; onChanged?: () => void }) {
   const [kinds, setKinds] = useState<ImportKind[] | null>(null);
   const [open, setOpen] = useState<ImportKind | null>(null);
   const [error, setError] = useState("");
@@ -281,7 +281,7 @@ export default function BulkPage({ branchId }: { branchId: string }) {
           </article>
         ))}
       </div>
-      {open && <ImportWizard branchId={branchId} kind={open} onClose={() => setOpen(null)} />}
+      {open && <ImportWizard branchId={branchId} kind={open} onClose={() => setOpen(null)} onDone={onChanged} />}
     </div>
   );
 }

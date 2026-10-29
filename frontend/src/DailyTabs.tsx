@@ -2,9 +2,10 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   api, errorText, ROLE_LABEL,
   type BranchDetail, type EmploymentType, type NewLogin, type SchoolClass, type StaffMember, type StaffProfileIn,
-  type StaffRole, type StudentRow,
+  type SchoolStats, type StaffRole, type StudentRow, todayLocal,
 } from "./api";
 import { ImportButton } from "./Bulk";
+import { LoginPanel } from "./Logins";
 import { records, type Item } from "./structureApi";
 import { go, href } from "./router";
 import StudentForm from "./StudentForm";
@@ -40,16 +41,25 @@ export function StudentsTab({
     return () => clearTimeout(t);
   }, [load]);
 
-  const sum = (k: "student_count" | "boys" | "girls" | "boarders") => classes.reduce((n, c) => n + (c[k] ?? 0), 0);
+  // Whole-school figures (they include students not yet in a class), fetched fresh.
+  const [totals, setTotals] = useState<SchoolStats | null>(null);
+  const loadTotals = useCallback(() => {
+    api.dashboardStats(todayLocal()).then((all) => setTotals(all[branch.school_id] ?? null)).catch(() => {});
+  }, [branch.school_id]);
+  useEffect(loadTotals, [loadTotals, classes]);
+  const inClasses = classes.reduce((n, c) => n + c.student_count, 0);
+  const t = totals ?? { students: inClasses, boys: 0, girls: 0, boarders: 0 };
+  const noClass = totals ? totals.students - inClasses : 0;
   return (
     <section className="stack">
       <div className="stat-strip">
-        <Stat icon="students" hue="violet" value={sum("student_count")} label="students" note={`in ${classes.length} classes`} />
-        <Stat icon="boys" hue="blue" value={sum("boys")} label="boys" />
-        <Stat icon="girls" hue="pink" value={sum("girls")} label="girls" />
+        <Stat icon="students" hue="violet" value={t.students} label="students"
+              note={noClass > 0 ? `${noClass} not in a class yet` : `in ${classes.filter((c) => c.student_count).length} classes`} />
+        <Stat icon="boys" hue="blue" value={t.boys} label="boys" />
+        <Stat icon="girls" hue="pink" value={t.girls} label="girls" />
         {branch.has_boarding
-          ? <Stat icon="bed" hue="indigo" value={sum("boarders")} label="boarders" note={`${sum("student_count") - sum("boarders")} day students`} />
-          : <Stat icon="sun" hue="amber" value={sum("student_count")} label="day students" />}
+          ? <Stat icon="bed" hue="indigo" value={t.boarders} label="boarders" note={`${t.students - t.boarders} day students`} />
+          : <Stat icon="sun" hue="amber" value={t.students} label="day students" />}
       </div>
       <div className="toolbar students-toolbar">
         <label className="search">
@@ -408,6 +418,7 @@ export function StaffTab({ branch }: { branch: BranchDetail }) {
       {editing && (
         <Modal title={"user_id" in editing ? displayName(editing) : "Add staff"} onClose={() => setEditing(null)}>
           <StaffForm
+            schoolId={branch.school_id}
             person={"user_id" in editing ? editing : null}
             jobTitle={"user_id" in editing ? undefined : editing.job_title}
             departments={departments}
@@ -450,8 +461,9 @@ function guessRole(job: string, teaching: boolean): StaffRole {
 const NON_TEACHING = /bursar|account|cook|driver|security|cleaner|gardener|nurse|matron|secretary|admin|store|electric|plumb|carpenter|librarian|technician|registrar|ict officer|porter|cashier/;
 
 function StaffForm({
-  person, jobTitle, departments, jobTitles, onSubmit, onCancel, onRemoveRole,
+  schoolId, person, jobTitle, departments, jobTitles, onSubmit, onCancel, onRemoveRole,
 }: {
+  schoolId: string;
   person: StaffMember | null;
   jobTitle?: string;
   departments: Item[];
@@ -520,6 +532,7 @@ function StaffForm({
           </div>
         </div>
       )}
+      {person && <LoginPanel schoolId={schoolId} userId={person.user_id} />}
       <div className="form-grid">
         <Field label="Title">
           <input list="staff-titles" value={v.title} onChange={(e) => set("title", e.target.value)} placeholder="Mr, Mrs, Rev Fr…" />

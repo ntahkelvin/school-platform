@@ -1016,3 +1016,20 @@ button.person-card:hover { border-color: var(--school, var(--accent)); }
 .member-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: var(--wash); border: 1px solid var(--border); }
 .head-pick select { min-width: 0; width: 100%; }
 .dept-detail .row select { min-width: 0; }
+
+/* ================= Logins ================= */
+.login-panel { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 16px; border: 1px solid var(--line); background: var(--wash); }
+.login-panel-head { display: flex; align-items: center; gap: 12px; }
+.login-panel-head strong { font-family: var(--display); font-size: 16px; }
+.login-facts { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 6px 12px; margin: 0; font-size: 14px; }
+.login-facts dt { color: var(--muted); }
+.login-facts dd { margin: 0; overflow-wrap: anywhere; }
+.new-password { display: flex; align-items: center; gap: 16px; padding: 16px; border-radius: 14px; background: color-mix(in srgb, var(--h-green) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--h-green) 30%, var(--border)); }
+.new-password dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; }
+.new-password dt { color: var(--muted); font-size: 13px; align-self: center; }
+.new-password dd { margin: 0; font-weight: 600; }
+.big-pass { font-size: 22px; letter-spacing: 0.08em; }
+a.whatsapp { background: #1fae54; border-color: #1fae54; color: #fff; display: inline-flex; align-items: center; gap: 6px; }
+a.whatsapp:hover { filter: brightness(1.06); }
+.link-like { color: var(--school, var(--accent)); font-weight: 600; }
+.login.card .glyph { margin-bottom: 4px; }

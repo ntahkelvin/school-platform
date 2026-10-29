@@ -6,7 +6,9 @@ so the same person can be a teacher at one branch and a parent at another.
 import enum
 import uuid
 
-from sqlalchemy import Boolean, CheckConstraint, Enum, ForeignKey, String
+from datetime import datetime
+
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -34,6 +36,9 @@ class User(IdMixin, TimestampMixin, Base):
     phone: Mapped[str | None] = mapped_column(String(32), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Set when someone else chose the password (a new login or a reset): they pick their own at next login.
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     memberships: Mapped[list["Membership"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
