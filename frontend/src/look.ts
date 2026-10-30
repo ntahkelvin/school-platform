@@ -36,6 +36,7 @@ export const TAB_LOOK: Record<string, Look> = {
   policies: { icon: "policies", hue: "slate" },
   imports: { icon: "layers", hue: "teal" },
   logins: { icon: "shield-check", hue: "indigo" },
+  teaching: { icon: "presentation", hue: "fuchsia" },
 };
 
 export const FACILITY_LOOK: Record<string, Look> = {

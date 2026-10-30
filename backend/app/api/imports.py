@@ -34,12 +34,13 @@ from app.api.deps import current_user
 from app.api.people import deferred_hashes, find_or_create_user
 from app.api.staff import ProfileIn, add_staff_role, save_profile
 from app.api.structure import make_beds, put_in_bed
+from app.api.teaching import check_teacher, find_teacher
 from app.api.students import GuardianIn, _check_admission_no, _link_guardian, _next_admission_no
 from app.core.db import get_db
 from app.core.phone import normalize_phone
 from app.core.security import hash_password
 from app.models import (
-    Bed, Board, BoardMember, BoardingStatus, Branch, Club, ClubKind, Department, DepartmentKind, EmploymentType,
+    ClassSubject, Bed, Board, BoardMember, BoardingStatus, Branch, Club, ClubKind, Department, DepartmentKind, EmploymentType,
     EventCategory, Facility, FacilityKind, Gender, Hostel, HostelGender, HostelRoom, House, Membership, Role, School,
     SchoolClass, SchoolEvent, Student, Subject, User, Vehicle, VehicleKind,
 )
@@ -644,6 +645,69 @@ def do_vehicle(ctx: Ctx, r: dict) -> tuple[str, str]:
 
 YES_NO = ["Yes", "No"]
 
+def classes_for(ctx: Ctx, raw: str) -> list[SchoolClass]:
+    """'JSS 1A' is one class; 'JSS 1' with no arm means every JSS 1 class."""
+    level, arm = parse_class(raw)
+    q = select(SchoolClass).where(SchoolClass.branch_id == ctx.branch.id, SchoolClass.level == level)
+    found = list(ctx.db.scalars(q.where(SchoolClass.arm == arm))) if arm else []
+    if not found and not arm:
+        found = list(ctx.db.scalars(q.order_by(SchoolClass.arm)))
+    if not found:
+        raise RowProblem(f"There's no class {level}{arm} yet. Add it on the Classes page first.")
+    return found
+
+
+def subject_names(ctx: Ctx) -> list[str]:
+    return list(ctx.db.scalars(select(Subject.name).where(Subject.school_id == ctx.school.id).order_by(Subject.name)))
+
+
+def teacher_names(ctx: Ctx) -> list[str]:
+    from app.api.teaching import staff_ids
+    ids = staff_ids(ctx.db, ctx.branch.id)
+    return sorted(ctx.db.scalars(select(User.full_name).where(User.id.in_(ids)))) if ids else []
+
+
+def teacher_of(ctx: Ctx, raw: str) -> User:
+    try:
+        return find_teacher(ctx.db, ctx.branch, raw)
+    except ValueError as e:
+        raise RowProblem(str(e))
+
+
+def do_class_teacher(ctx: Ctx, r: dict) -> tuple[str, str]:
+    classes = classes_for(ctx, need(r, "class", "Class"))
+    if len(classes) > 1:
+        raise RowProblem("Give the arm too, e.g. JSS 1A: a class teacher looks after one class")
+    cls = classes[0]
+    t = teacher_of(ctx, need(r, "teacher", "Teacher"))
+    result = "skipped" if cls.form_teacher_id == t.id else "updated" if cls.form_teacher_id else "added"
+    cls.form_teacher_id = t.id
+    return result, f"{t.full_name} is class teacher of {cls.name}"
+
+
+def do_subject_teacher(ctx: Ctx, r: dict) -> tuple[str, str]:
+    classes = classes_for(ctx, need(r, "class", "Class"))
+    name = need(r, "subject", "Subject")
+    subj = ctx.db.scalar(select(Subject).where(Subject.school_id == ctx.school.id, func.lower(Subject.name) == name.lower()))
+    if not subj:
+        raise RowProblem(f"There's no subject called '{name}'. Add it on the Departments and subjects page.")
+    t = teacher_of(ctx, text(r.get("teacher"))) if text(r.get("teacher")) else None
+    elective = yes(r.get("elective"))
+    made = 0
+    for cls in classes:
+        slot = ctx.db.scalar(select(ClassSubject).where(ClassSubject.class_id == cls.id, ClassSubject.subject_id == subj.id))
+        if not slot:
+            slot = ClassSubject(class_id=cls.id, subject_id=subj.id, compulsory=True)
+            ctx.db.add(slot)
+            made += 1
+        if elective is not None:
+            slot.compulsory = not elective
+        if t:
+            slot.teacher_user_id = t.id
+    where = ", ".join(c.name for c in classes)
+    return ("added" if made else "updated"), f"{subj.name} in {where}" + (f", taught by {t.full_name}" if t else "")
+
+
 KINDS: dict[str, Kind] = {k.key: k for k in [
     Kind("departments", "Departments", "department", "Academic departments and support teams.", "departments", "sky", [
         Col("Department name", "name", True, "e.g. Sciences, Mathematics, Bursary", aliases=("name", "department"), width=28),
@@ -763,6 +827,20 @@ KINDS: dict[str, Kind] = {k.key: k for k in [
         Col("Driver's phone", "driver_phone", width=16),
         Col("Route", "route", width=30),
     ], do_vehicle, [["Bus 1", "Bus", "RSH 412 AB", "32", "Mr Chukwu", "08032221111", "Rumuokoro, Eliozu, Woji"]]),
+    Kind("class-teachers", "Class teachers", "class", "The class teacher (form teacher) of each class.", "user", "orange", [
+        Col("Class", "class", True, "e.g. JSS 1A", choices=class_names, width=12),
+        Col("Teacher", "teacher", True, "Name as on the Staff page, staff number or phone", choices=teacher_names,
+            aliases=("class teacher", "form teacher", "form master", "form mistress"), width=28),
+    ], do_class_teacher, [["JSS 1A", "Ngozi Eze"], ["SS 3D", "JMC/STF/014"]]),
+    Kind("subject-teachers", "Subjects and teachers per class", "subject", "Which subjects each class takes and who teaches them. "
+         "Write a class without its arm (JSS 1) to mean every JSS 1 class.", "presentation", "sky", [
+        Col("Class", "class", True, "e.g. JSS 1A, or JSS 1 for all its arms", choices=class_names, width=12),
+        Col("Subject", "subject", True, choices=subject_names, width=28),
+        Col("Teacher", "teacher", hint="Name as on the Staff page, staff number or phone. Blank: no teacher yet.",
+            choices=teacher_names, aliases=("subject teacher",), width=28),
+        Col("Elective", "elective", hint="Yes if only some students take it (SS electives, Igbo or Yoruba...).",
+            choices=YES_NO, aliases=("optional",), width=10),
+    ], do_subject_teacher, [["SS 1", "Chemistry", "Ngozi Eze", "Yes"], ["JSS 2A", "Mathematics", "JMC/STF/019", ""]]),
 ]}
 
 

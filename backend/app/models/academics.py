@@ -64,3 +64,16 @@ class Subject(IdMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(100))
     code: Mapped[str | None] = mapped_column(String(20))
     department_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"))
+
+
+class ClassSubject(IdMixin, TimestampMixin, Base):
+    """A subject a class takes, and who teaches it to that class."""
+
+    __tablename__ = "class_subjects"
+    __table_args__ = (UniqueConstraint("class_id", "subject_id", name="uq_class_subject"),)
+
+    class_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("classes.id", ondelete="CASCADE"), index=True)
+    subject_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"), index=True)
+    teacher_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    compulsory: Mapped[bool] = mapped_column(Boolean, default=True)  # False: an elective only some students take
+

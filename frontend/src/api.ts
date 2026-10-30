@@ -372,6 +372,7 @@ export const api = {
     send<{ staff: StaffMember[]; new_login: NewLogin | null }>("POST", `/api/branches/${branchId}/staff`, data),
   updateStaff: (branchId: string, userId: string, data: StaffProfileIn) =>
     send<StaffMember[]>("PUT", `/api/branches/${branchId}/staff/${userId}`, data),
+  raw: <T,>(method: string, path: string, body?: unknown) => (method === "GET" ? get<T>(path) : send<T>(method, path, body)),
   logins: (schoolId: string) => get<LoginInfo[]>(`/api/schools/${schoolId}/logins`),
   loginInfo: (schoolId: string, userId: string) => get<LoginInfo>(`/api/schools/${schoolId}/logins/${userId}`),
   resetPassword: (schoolId: string, userId: string, password?: string) =>
