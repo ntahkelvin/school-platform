@@ -7,7 +7,9 @@ import {
 import Layout from "./Layout";
 import { href } from "./router";
 import StudentForm, { checkGuardian, emptyGuardian, GuardianFields } from "./StudentForm";
-import { Empty, Modal, NewLoginNotice } from "./ui";
+import { Empty, hue, Modal, NewLoginNotice } from "./ui";
+import Icon from "./Icon";
+import { subjectLook } from "./look";
 
 function age(dob: string | null): string {
   if (!dob) return "";
@@ -81,6 +83,8 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
             </section>
 
             <AttendanceCard studentId={student.id} />
+
+            <SubjectsCard studentId={student.id} classKey={student.class_id ?? ""} />
 
             <section className="card">
               <div className="card-head">
@@ -232,6 +236,78 @@ function AttendanceCard({ studentId }: { studentId: string }) {
             </ul>
           )}
         </>
+      )}
+    </section>
+  );
+}
+
+interface SubjectLine { subject_id: string; name: string; compulsory: boolean; teacher_name: string | null; group_id: string | null; group_name: string | null }
+interface Avail { subject_id: string; name: string; taking: boolean; groups: { id: string; name: string; teacher_name: string | null }[] }
+interface StudentSubjects { senior: boolean; level: string | null; subjects: SubjectLine[]; available: Avail[] }
+
+function SubjectsCard({ studentId, classKey }: { studentId: string; classKey: string }) {
+  const [data, setData] = useState<StudentSubjects | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState("");
+  const load = useCallback(() => {
+    api.raw<StudentSubjects>("GET", `/api/students/${studentId}/subjects`).then(setData).catch((err) => setError(errorText(err)));
+  }, [studentId]);
+  useEffect(load, [load, classKey]);
+  const set = (subjectId: string, body: { taking: boolean; group_id?: string | null }) =>
+    api.raw("PUT", `/api/students/${studentId}/electives/${subjectId}`, body).then(load).catch((err) => setError(errorText(err)));
+  if (!data) return null;
+  const notTaken = data.available.filter((a) => !a.taking);
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h2>Subjects</h2>
+        {data.senior && notTaken.length > 0 && <button className="with-icon" onClick={() => setAdding(true)}><Icon name="plus" size={15} />Add elective</button>}
+      </div>
+      {error && <p className="error">{error}</p>}
+      {data.subjects.length === 0 && <Empty icon="book">No subjects yet. Choose the class's subjects on the Teaching page.</Empty>}
+      <ul className="student-subjects">
+        {data.subjects.map((x) => {
+          const l = subjectLook(x.name);
+          const avail = data.available.find((a) => a.subject_id === x.subject_id);
+          return (
+            <li key={x.subject_id} style={hue(l.hue)}>
+              <span className="subject-chip-icon"><Icon name={l.icon} size={13} stroke={2.2} /></span>
+              <span className="grow">
+                {x.name}{!x.compulsory && <span className="elective-tag">elective</span>}
+                <span className="block small muted">{x.teacher_name ?? (x.compulsory ? "No teacher yet" : "No group yet")}</span>
+              </span>
+              {!x.compulsory && avail && (
+                <>
+                  <select aria-label={`Teacher for ${x.name}`} value={x.group_id ?? ""} onChange={(e) => set(x.subject_id, { taking: true, group_id: e.target.value || null })}>
+                    <option value="">No group yet</option>
+                    {avail.groups.map((g) => <option key={g.id} value={g.id}>{g.teacher_name ?? g.name}</option>)}
+                  </select>
+                  <button className="ghost small" onClick={() => { if (window.confirm(`Drop ${x.name}?`)) set(x.subject_id, { taking: false }); }}>Drop</button>
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {data.senior && <p className="small muted">{data.level} students take the core subjects and choose electives. Each elective has one teacher.</p>}
+      {adding && (
+        <Modal title="Add an elective" onClose={() => setAdding(false)}>
+          <ul className="pick-list">
+            {notTaken.map((a) => {
+              const l = subjectLook(a.name);
+              return (
+                <li key={a.subject_id}>
+                  <button onClick={() => { setAdding(false); set(a.subject_id, { taking: true, group_id: a.groups.length === 1 ? a.groups[0].id : null }); }}>
+                    <span className="subject-chip-icon" style={hue(l.hue)}><Icon name={l.icon} size={14} stroke={2.2} /></span>
+                    <span className="grow"><strong>{a.name}</strong>
+                      <span className="block small muted">{a.groups.length ? a.groups.map((g) => g.teacher_name ?? g.name).join(", ") : "No groups yet"}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </Modal>
       )}
     </section>
   );

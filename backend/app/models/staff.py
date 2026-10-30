@@ -31,6 +31,7 @@ class StaffProfile(IdMixin, TimestampMixin, Base):
     gender: Mapped[Gender | None] = mapped_column(Enum(Gender, name="gender", create_type=False))
     job_title: Mapped[str | None] = mapped_column(String(100))       # Principal, Chemistry Teacher, Bursar...
     department_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"))
+    unit_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("units.id", ondelete="SET NULL"))
     teaching: Mapped[bool] = mapped_column(Boolean, default=True)
     employment_type: Mapped[EmploymentType] = mapped_column(
         Enum(EmploymentType, name="employment_type"), default=EmploymentType.full_time
@@ -39,3 +40,4 @@ class StaffProfile(IdMixin, TimestampMixin, Base):
     qualification: Mapped[str | None] = mapped_column(String(100))  # B.Sc. Ed, NCE, M.Sc...
 
     department = relationship("Department", lazy="joined")
+    unit = relationship("Unit", lazy="joined")

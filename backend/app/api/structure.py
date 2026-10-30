@@ -113,7 +113,7 @@ def staff_options(school_id: uuid.UUID, user: User = Depends(current_user), db: 
     school = owned_school(db, user, school_id)
     rows = db.scalars(select(Membership).where(
         Membership.group_id == school.group_id,
-        Membership.role.in_([Role.owner, Role.head, Role.bursar, Role.teacher, Role.house_parent, Role.support]),
+        Membership.role.in_([Role.owner, Role.head, Role.vice_principal, Role.it_admin, Role.bursar, Role.teacher, Role.house_parent, Role.support]),
         (Membership.school_id == school.id) | (Membership.role == Role.owner),
     )).all()
     people: dict[uuid.UUID, PersonOption] = {}

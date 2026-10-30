@@ -8,7 +8,7 @@ import enum
 import uuid
 from datetime import date, time
 
-from sqlalchemy import JSON, Date, Enum, ForeignKey, Integer, String, Text, Time, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Date, Enum, ForeignKey, Integer, String, Text, Time, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -111,6 +111,28 @@ class Department(IdMixin, TimestampMixin, PersonNameMixin, Base):
     head_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
     head = _person("Department.head_user_id")
+
+    @property
+    def head_name(self) -> str | None:
+        return self._name(self.head)
+
+
+class Unit(IdMixin, TimestampMixin, PersonNameMixin, Base):
+    """A smaller team inside a department, e.g. the Chemistry unit in Sciences or the Guidance and
+    Counselling unit. Teaching units can cover one or more subjects."""
+
+    __tablename__ = "units"
+    __table_args__ = (UniqueConstraint("department_id", "name", name="uq_unit_name"),)
+
+    school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"), index=True)
+    department_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("departments.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    teaching: Mapped[bool] = mapped_column(Boolean, default=True)
+    description: Mapped[str | None] = mapped_column(String(500))
+    head_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+    head = _person("Unit.head_user_id")
+    department = relationship("Department", lazy="joined")
 
     @property
     def head_name(self) -> str | None:

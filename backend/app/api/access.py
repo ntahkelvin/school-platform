@@ -9,7 +9,7 @@ import uuid
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import owned_group_ids
+from app.api.deps import managed_school_ids, owned_group_ids
 from app.models import Branch, School, SchoolGroup, User
 
 
@@ -25,6 +25,15 @@ def owned_group(db: Session, user: User, group_id: uuid.UUID) -> SchoolGroup:
 
 
 def owned_school(db: Session, user: User, school_id: uuid.UUID) -> School:
+    """The school, if this user owns it or runs it (principal, vice principal, IT admin)."""
+    school = db.get(School, school_id)
+    if not school or (school.group_id not in owned_group_ids(user) and school.id not in managed_school_ids(user)):
+        raise not_found("School")
+    return school
+
+
+def owner_school(db: Session, user: User, school_id: uuid.UUID) -> School:
+    """The school, only if this user owns its organisation (for deleting or moving it)."""
     school = db.get(School, school_id)
     if not school or school.group_id not in owned_group_ids(user):
         raise not_found("School")
@@ -33,6 +42,6 @@ def owned_school(db: Session, user: User, school_id: uuid.UUID) -> School:
 
 def owned_branch(db: Session, user: User, branch_id: uuid.UUID) -> Branch:
     branch = db.get(Branch, branch_id)
-    if not branch or branch.school.group_id not in owned_group_ids(user):
+    if not branch or (branch.school.group_id not in owned_group_ids(user) and branch.school_id not in managed_school_ids(user)):
         raise not_found("Branch")
     return branch

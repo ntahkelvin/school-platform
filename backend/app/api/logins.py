@@ -22,7 +22,7 @@ from app.models import Board, BoardMember, Branch, Membership, Role, StaffProfil
 router = APIRouter(prefix="/api", tags=["logins"])
 
 ROLE_LABEL = {
-    Role.owner: "Owner", Role.head: "Head", Role.bursar: "Bursar", Role.teacher: "Teacher",
+    Role.owner: "Owner", Role.head: "Head", Role.vice_principal: "Vice principal", Role.it_admin: "IT team", Role.bursar: "Bursar", Role.teacher: "Teacher",
     Role.house_parent: "House parent", Role.support: "Support staff", Role.parent: "Parent",
     Role.student: "Student", Role.board_member: "Board member",
 }

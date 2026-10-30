@@ -64,6 +64,7 @@ class Subject(IdMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(100))
     code: Mapped[str | None] = mapped_column(String(20))
     department_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("departments.id", ondelete="SET NULL"))
+    unit_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("units.id", ondelete="SET NULL"))
 
 
 class ClassSubject(IdMixin, TimestampMixin, Base):
@@ -76,4 +77,29 @@ class ClassSubject(IdMixin, TimestampMixin, Base):
     subject_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"), index=True)
     teacher_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     compulsory: Mapped[bool] = mapped_column(Boolean, default=True)  # False: an elective only some students take
+
+
+class TeachingGroup(IdMixin, TimestampMixin, Base):
+    """A group of students taking one elective subject with one teacher, drawn from every arm of a
+    level, e.g. 'SS 1 Chemistry, Mr Okafor's group'."""
+
+    __tablename__ = "teaching_groups"
+
+    branch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("branches.id", ondelete="CASCADE"), index=True)
+    level: Mapped[str] = mapped_column(String(30))
+    subject_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    teacher_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    capacity: Mapped[int | None] = mapped_column(Integer)
+
+
+class StudentElective(IdMixin, TimestampMixin, Base):
+    """An elective a student takes. One teacher (group) per subject per student."""
+
+    __tablename__ = "student_electives"
+    __table_args__ = (UniqueConstraint("student_id", "subject_id", name="uq_student_elective"),)
+
+    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), index=True)
+    subject_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"), index=True)
+    group_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("teaching_groups.id", ondelete="SET NULL"), index=True)
 

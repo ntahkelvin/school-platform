@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.api.access import owned_branch, owned_group, owned_school
+from app.api.access import owned_branch, owned_group, owned_school, owner_school
 from app.api.deps import current_user
 from app.core.db import get_db
 from app.models import (
@@ -97,7 +97,7 @@ class MoveSchool(BaseModel):
 
 @router.post("/schools/{school_id}/move", status_code=204)
 def move_school(school_id: uuid.UUID, data: MoveSchool, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    school = owned_school(db, user, school_id)
+    school = owner_school(db, user, school_id)
     owned_group(db, user, data.group_id)
     if school.group_id == data.group_id:
         return
@@ -248,7 +248,7 @@ class ConfirmName(BaseModel):
 def delete_school(school_id: uuid.UUID, data: ConfirmName, user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Permanently removes a school with all its campuses, students, attendance and set-up.
     The exact school name must be typed to confirm. People's logins are kept."""
-    school = owned_school(db, user, school_id)
+    school = owner_school(db, user, school_id)
     if data.confirm_name.strip().lower() != school.name.strip().lower():
         raise bad("The name you typed doesn't match the school's name")
     db.delete(school)

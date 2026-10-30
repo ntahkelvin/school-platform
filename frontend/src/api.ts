@@ -62,7 +62,7 @@ export type SchoolType = "day" | "boarding" | "mixed";
 export type Gender = "male" | "female";
 export type BoardingStatus = "day" | "boarder";
 export type StudentStatus = "active" | "graduated" | "withdrawn";
-export type StaffRole = "head" | "bursar" | "teacher" | "house_parent" | "support";
+export type StaffRole = "head" | "vice_principal" | "it_admin" | "bursar" | "teacher" | "house_parent" | "support";
 export type EmploymentType = "full_time" | "part_time" | "contract" | "nysc" | "volunteer";
 
 export interface Branch {
@@ -146,6 +146,7 @@ export interface Subject {
   name: string;
   code: string | null;
   department_id: string | null;
+  unit_id?: string | null;
 }
 export interface SchoolClass {
   id: string;
@@ -219,11 +220,26 @@ export interface StaffMember {
   job_title: string | null;
   department_id: string | null;
   department_name: string | null;
+  unit_id: string | null;
+  unit_name: string | null;
   teaching: boolean;
   employment_type: EmploymentType;
   date_joined: string | null;
   qualification: string | null;
   heads_departments: string[];
+  heads_units: string[];
+}
+export interface Unit {
+  id: string;
+  department_id: string;
+  department_name: string;
+  name: string;
+  teaching: boolean;
+  description: string | null;
+  head_user_id: string | null;
+  head_name: string | null;
+  subject_ids: string[];
+  member_ids: string[];
 }
 export interface StaffProfileIn {
   full_name: string;
@@ -232,6 +248,7 @@ export interface StaffProfileIn {
   gender: Gender | null;
   job_title: string | null;
   department_id: string | null;
+  unit_id?: string | null;
   teaching: boolean;
   employment_type: EmploymentType;
   date_joined: string | null;
@@ -373,6 +390,12 @@ export const api = {
   updateStaff: (branchId: string, userId: string, data: StaffProfileIn) =>
     send<StaffMember[]>("PUT", `/api/branches/${branchId}/staff/${userId}`, data),
   raw: <T,>(method: string, path: string, body?: unknown) => (method === "GET" ? get<T>(path) : send<T>(method, path, body)),
+  units: (schoolId: string) => get<Unit[]>(`/api/schools/${schoolId}/units`),
+  addUnit: (schoolId: string, u: Partial<Unit>) => send<Unit[]>("POST", `/api/schools/${schoolId}/units`, u),
+  updateUnit: (unitId: string, u: Partial<Unit>) => send<Unit[]>("PATCH", `/api/units/${unitId}`, u),
+  deleteUnit: (unitId: string) => send<void>("DELETE", `/api/units/${unitId}`),
+  addStandardUnits: (schoolId: string) => send<Unit[]>("POST", `/api/schools/${schoolId}/units/add-standard`),
+  setSubjectUnit: (subjectId: string, unitId: string | null) => send<void>("PUT", `/api/subjects/${subjectId}/unit`, { unit_id: unitId }),
   logins: (schoolId: string) => get<LoginInfo[]>(`/api/schools/${schoolId}/logins`),
   loginInfo: (schoolId: string, userId: string) => get<LoginInfo>(`/api/schools/${schoolId}/logins/${userId}`),
   resetPassword: (schoolId: string, userId: string, password?: string) =>
@@ -422,6 +445,8 @@ export const SCHOOL_TYPE_LABEL: Record<SchoolType, string> = {
 
 export const ROLE_LABEL: Record<StaffRole, string> = {
   head: "Head / principal",
+  vice_principal: "Vice principal",
+  it_admin: "IT team",
   bursar: "Bursar",
   teacher: "Teacher",
   house_parent: "House parent",

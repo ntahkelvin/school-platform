@@ -10,11 +10,11 @@ from app.api.access import not_found, owned_branch
 from app.api.deps import current_user
 from app.api.people import find_or_create_user
 from app.core.db import get_db
-from app.models import Branch, Department, EmploymentType, Gender, Membership, Role, StaffProfile, User
+from app.models import Branch, Department, EmploymentType, Gender, Membership, Role, StaffProfile, Unit, User
 
 router = APIRouter(prefix="/api", tags=["staff"])
 
-STAFF_ROLES = [Role.head, Role.bursar, Role.teacher, Role.house_parent, Role.support]
+STAFF_ROLES = [Role.head, Role.vice_principal, Role.it_admin, Role.bursar, Role.teacher, Role.house_parent, Role.support]
 
 # Positions most Nigerian secondary schools fill. Shown on the Staff page as "key positions".
 KEY_POSITIONS = [
@@ -36,6 +36,7 @@ class ProfileIn(BaseModel):
     gender: Gender | None = None
     job_title: str | None = Field(default=None, max_length=100)
     department_id: uuid.UUID | None = None
+    unit_id: uuid.UUID | None = None
     teaching: bool = True
     employment_type: EmploymentType = EmploymentType.full_time
     date_joined: date | None = None
@@ -70,11 +71,14 @@ class StaffOut(BaseModel):
     job_title: str | None = None
     department_id: uuid.UUID | None = None
     department_name: str | None = None
+    unit_id: uuid.UUID | None = None
+    unit_name: str | None = None
     teaching: bool = True
     employment_type: EmploymentType = EmploymentType.full_time
     date_joined: date | None = None
     qualification: str | None = None
     heads_departments: list[str] = []
+    heads_units: list[str] = []
 
 
 class StaffCreated(BaseModel):
@@ -91,6 +95,9 @@ def staff_list(db: Session, branch_id: uuid.UUID) -> list[StaffOut]:
     heads: dict[uuid.UUID, list[str]] = {}
     for d in db.scalars(select(Department).where(Department.school_id == branch.school_id, Department.head_user_id.is_not(None))):
         heads.setdefault(d.head_user_id, []).append(d.name)
+    unit_heads: dict[uuid.UUID, list[str]] = {}
+    for u in db.scalars(select(Unit).where(Unit.school_id == branch.school_id, Unit.head_user_id.is_not(None))):
+        unit_heads.setdefault(u.head_user_id, []).append(u.name)
     people: dict[uuid.UUID, StaffOut] = {}
     for m in rows:
         u = m.user
@@ -101,11 +108,13 @@ def staff_list(db: Session, branch_id: uuid.UUID) -> list[StaffOut]:
                 extra = dict(
                     staff_no=p.staff_no, title=p.title, gender=p.gender, job_title=p.job_title,
                     department_id=p.department_id, department_name=p.department.name if p.department else None,
+                    unit_id=p.unit_id, unit_name=p.unit.name if p.unit else None,
                     teaching=p.teaching, employment_type=p.employment_type, date_joined=p.date_joined,
                     qualification=p.qualification,
                 )
             people[u.id] = StaffOut(user_id=u.id, full_name=u.full_name, phone=u.phone, email=u.email, roles=[],
-                                    heads_departments=sorted(heads.get(u.id, [])), **extra)
+                                    heads_departments=sorted(heads.get(u.id, [])),
+                                    heads_units=sorted(unit_heads.get(u.id, [])), **extra)
         people[u.id].roles.append(StaffRoleOut(membership_id=m.id, role=m.role))
     for p in people.values():
         p.roles.sort(key=lambda r: STAFF_ROLES.index(r.role))
@@ -118,6 +127,12 @@ def save_profile(db: Session, school_id: uuid.UUID, user_id: uuid.UUID, data: Pr
         dept = db.get(Department, data.department_id)
         if not dept or dept.school_id != school_id:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That department isn't in this school")
+    if data.unit_id:
+        unit = db.get(Unit, data.unit_id)
+        if not unit or unit.school_id != school_id:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "That unit isn't in this school")
+        if not data.department_id:
+            data = data.model_copy(update={"department_id": unit.department_id})
     p = db.scalar(select(StaffProfile).where(StaffProfile.school_id == school_id, StaffProfile.user_id == user_id))
     if not p:
         p = StaffProfile(school_id=school_id, user_id=user_id)

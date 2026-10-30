@@ -22,3 +22,12 @@ def current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_
 def owned_group_ids(user: User) -> set[uuid.UUID]:
     """Groups where this user is the owner."""
     return {m.group_id for m in user.memberships if m.role == Role.owner}
+
+
+# People who run one school day to day. They can set it up and manage it, but not delete or move it.
+MANAGER_ROLES = {Role.head, Role.vice_principal, Role.it_admin}
+
+
+def managed_school_ids(user: User) -> set[uuid.UUID]:
+    """Schools this user runs as principal, vice principal or IT admin."""
+    return {m.school_id for m in user.memberships if m.role in MANAGER_ROLES and m.school_id}

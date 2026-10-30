@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   api, errorText, ROLE_LABEL,
   type BranchDetail, type EmploymentType, type NewLogin, type SchoolClass, type StaffMember, type StaffProfileIn,
-  type SchoolStats, type StaffRole, type StudentRow, todayLocal,
+  type SchoolStats, type StaffRole, type StudentRow, type Unit, todayLocal,
 } from "./api";
 import { ImportButton } from "./Bulk";
 import { LoginPanel } from "./Logins";
@@ -303,9 +303,11 @@ export function StaffTab({ branch }: { branch: BranchDetail }) {
     api.staff(branch.id).then(setStaff).catch((err) => setError(err.message));
   }, [branch.id]);
   useEffect(load, [load]);
+  const [units, setUnits] = useState<Unit[]>([]);
   useEffect(() => {
     records("school", branch.school_id, "departments").list().then(setDepartments).catch(() => {});
     api.staffOptions().then(setOptions).catch(() => {});
+    api.units(branch.school_id).then(setUnits).catch(() => {});
   }, [branch.school_id]);
 
   const list = (staff ?? []).filter((p) => !dept || (dept === "none" ? !p.department_id : p.department_id === dept));
@@ -402,7 +404,9 @@ export function StaffTab({ branch }: { branch: BranchDetail }) {
                     <span className="job">{p.job_title || (p.teaching ? "Teacher" : "Staff")}</span>
                     <div className="chips">
                       {p.department_name && <span className="hue-chip" style={hue(dl.hue)}><Icon name={dl.icon} size={12} stroke={2.3} />{p.department_name}</span>}
+                      {p.unit_name && <span className="hue-chip" style={hue("indigo")}><Icon name="network" size={12} stroke={2.3} />{p.unit_name} unit</span>}
                       {p.heads_departments.map((h) => <span key={h} className="hue-chip" style={hue("amber")}><Icon name="crown" size={12} stroke={2.3} />Head of {h}</span>)}
+                      {p.heads_units.map((h) => <span key={h} className="hue-chip" style={hue("orange")}><Icon name="crown" size={12} stroke={2.3} />Head, {h} unit</span>)}
                       {!p.teaching && <span className="hue-chip" style={hue("orange")}>Non-teaching</span>}
                       {p.employment_type === "nysc" && <span className="hue-chip" style={hue("green")}>NYSC</span>}
                     </div>
@@ -422,6 +426,7 @@ export function StaffTab({ branch }: { branch: BranchDetail }) {
             person={"user_id" in editing ? editing : null}
             jobTitle={"user_id" in editing ? undefined : editing.job_title}
             departments={departments}
+            units={units}
             jobTitles={options.job_titles}
             onCancel={() => setEditing(null)}
             onRemoveRole={(membershipId) => api.removeStaffRole(membershipId).then(() => { load(); setEditing(null); })}
@@ -453,6 +458,8 @@ export function StaffTab({ branch }: { branch: BranchDetail }) {
 
 function guessRole(job: string, teaching: boolean): StaffRole {
   const j = job.toLowerCase();
+  if (/vice ?principal|deputy ?(principal|head)/.test(j)) return "vice_principal";
+  if (/\bict officer|\bit (officer|admin|manager)|systems? admin/.test(j)) return "it_admin";
   if (!/vice|deputy/.test(j) && /principal|head ?teacher|head ?master|head ?mistress|rector/.test(j)) return "head";
   if (/bursar|accountant|cashier/.test(j)) return "bursar";
   if (/boarding|house ?master|house ?mistress|matron|house ?parent|hostel/.test(j)) return "house_parent";
@@ -461,12 +468,13 @@ function guessRole(job: string, teaching: boolean): StaffRole {
 const NON_TEACHING = /bursar|account|cook|driver|security|cleaner|gardener|nurse|matron|secretary|admin|store|electric|plumb|carpenter|librarian|technician|registrar|ict officer|porter|cashier/;
 
 function StaffForm({
-  schoolId, person, jobTitle, departments, jobTitles, onSubmit, onCancel, onRemoveRole,
+  schoolId, person, jobTitle, departments, units, jobTitles, onSubmit, onCancel, onRemoveRole,
 }: {
   schoolId: string;
   person: StaffMember | null;
   jobTitle?: string;
   departments: Item[];
+  units: Unit[];
   jobTitles: string[];
   onSubmit: (data: StaffProfileIn, extra: { phone: string; email: string; role: StaffRole | null }) => Promise<void>;
   onCancel: () => void;
@@ -475,6 +483,7 @@ function StaffForm({
   const [v, setV] = useState({
     title: person?.title ?? "", full_name: person?.full_name ?? "", gender: person?.gender ?? "",
     phone: "", email: "", job_title: person?.job_title ?? jobTitle ?? "", department_id: person?.department_id ?? "",
+    unit_id: person?.unit_id ?? "",
     teaching: person ? person.teaching : !NON_TEACHING.test((jobTitle ?? "").toLowerCase()),
     staff_no: person?.staff_no ?? "", employment_type: person?.employment_type ?? "full_time",
     date_joined: person?.date_joined ?? "", qualification: person?.qualification ?? "",
@@ -501,7 +510,7 @@ function StaffForm({
     try {
       await onSubmit({
         full_name: v.full_name.trim(), title: v.title.trim() || null, gender: (v.gender || null) as StaffProfileIn["gender"],
-        job_title: v.job_title.trim() || null, department_id: v.department_id || null, teaching: v.teaching,
+        job_title: v.job_title.trim() || null, department_id: v.department_id || null, unit_id: v.unit_id || null, teaching: v.teaching,
         staff_no: v.staff_no.trim() || null, employment_type: v.employment_type as EmploymentType,
         date_joined: v.date_joined || null, qualification: v.qualification.trim() || null,
       }, { phone: v.phone.trim(), email: v.email.trim(), role: role || null });
@@ -549,9 +558,15 @@ function StaffForm({
           <input list="staff-jobs" value={v.job_title} onChange={(e) => set("job_title", e.target.value)} placeholder="e.g. Chemistry Teacher" />
         </Field>
         <Field label="Department">
-          <select value={v.department_id} onChange={(e) => set("department_id", e.target.value)}>
+          <select value={v.department_id} onChange={(e) => { set("department_id", e.target.value); set("unit_id", ""); }}>
             <option value="">No department</option>
             {departments.map((d) => <option key={d.id} value={d.id}>{String(d.name)}</option>)}
+          </select>
+        </Field>
+        <Field label="Unit">
+          <select value={v.unit_id} onChange={(e) => set("unit_id", e.target.value)} disabled={!v.department_id}>
+            <option value="">{v.department_id ? "No unit" : "Choose a department first"}</option>
+            {units.filter((u) => u.department_id === v.department_id).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
         </Field>
         <Field label={person ? "Give another role (optional)" : "App access"} hint={person ? undefined : "What they can do in the app. Worked out from the position."}>

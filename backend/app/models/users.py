@@ -18,6 +18,8 @@ from app.models.mixins import IdMixin, TimestampMixin
 class Role(str, enum.Enum):
     owner = "owner"            # proprietor: sees the whole group
     head = "head"              # principal / head teacher
+    vice_principal = "vice_principal"  # helps run the school: same powers as the head for set-up
+    it_admin = "it_admin"      # the school's IT team: logins, uploads and set-up
     bursar = "bursar"          # fees and money
     teacher = "teacher"
     house_parent = "house_parent"  # boarding welfare

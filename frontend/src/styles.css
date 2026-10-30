@@ -1077,3 +1077,38 @@ a.whatsapp:hover { filter: brightness(1.06); }
 .load-row .chips { min-width: 0; }
 .load-row .hue-chip { white-space: normal; line-height: 1.4; }
 .load-row > .grow { min-width: 0; }
+
+/* ================= Units and electives ================= */
+.unit-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.unit-row { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; padding: 10px 12px; border-radius: 12px; background: var(--wash); border: 1px solid var(--border); color: var(--text); }
+.unit-row:hover { border-color: var(--hue, var(--accent)); }
+.unit-row .icon { color: var(--muted); }
+.member-picks { max-height: 30vh; overflow-y: auto; }
+.segmented.small-seg button { padding: 5px 10px; font-size: 13px; }
+.elective-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; align-items: start; }
+.elective-subjects { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; position: sticky; top: 12px; }
+.elective-subjects button { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; padding: 9px 10px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+.elective-subjects button:hover { border-color: var(--line); background: var(--wash); }
+.elective-subjects button.on { background: var(--tint); border-color: var(--hue); box-shadow: 0 8px 20px -14px var(--hue); }
+.elective-subjects .subject-chip-icon { width: 28px; height: 28px; flex: none; }
+.warn-dot { flex: none; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; display: grid; place-items: center; font-size: 11px; font-weight: 800; background: var(--h-amber); color: #fff; }
+.elective-detail { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 18px; border: 1px solid var(--line); background: linear-gradient(170deg, var(--tint) 0%, var(--surface) 140px); }
+.elective-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.elective-head h3 { font-family: var(--display); font-size: 20px; margin: 0; }
+.group-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.group-card { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); }
+.group-card .teach-progress { margin-top: 6px; }
+.choice-select { padding: 6px 8px; font-size: 13px; border-radius: 8px; max-width: 260px; }
+.choice-select.on { border-color: var(--hue); background: var(--tint); color: var(--ink); font-weight: 600; }
+.choice-select.pending { border-color: var(--h-amber); }
+.choice-select.off { color: var(--muted); }
+.slot-teacher.groups { color: var(--h-violet); }
+.student-subjects { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.student-subjects li { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 10px; font-size: 14px; }
+.student-subjects li:hover { background: var(--wash); }
+.student-subjects select { padding: 5px 8px; font-size: 13px; max-width: 200px; }
+.student-subjects .subject-chip-icon { width: 24px; height: 24px; flex: none; }
+@media (max-width: 900px) { .elective-layout { grid-template-columns: 1fr; } .elective-subjects { position: static; flex-direction: row; overflow-x: auto; } .elective-subjects button { min-width: 200px; } }
+.student-subjects li { flex-wrap: wrap; }
+.student-subjects li > .grow { min-width: 60%; }
+.student-subjects li > select { margin-left: 34px; flex: 1; max-width: none; min-width: 0; }

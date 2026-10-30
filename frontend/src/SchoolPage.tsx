@@ -3,7 +3,7 @@ import {
   api, errorText, SCHOOL_TYPE_LABEL,
   todayLocal,
   type AcademicSession, type BranchDetail, type Me, type School, type SchoolClass, type SchoolStats, type StaffMember,
-  type StaffProfileIn, type Subject, type Term,
+  type StaffProfileIn, type Subject, type Term, type Unit,
 } from "./api";
 import AttendanceTab from "./AttendanceTab";
 import BulkPage, { ImportButton } from "./Bulk";
@@ -393,6 +393,9 @@ function DepartmentsTab({ schoolId, branchId, people, onPeopleChanged }: {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [open, setOpen] = useState<Item | null>(null);
   const [version, setVersion] = useState(0);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [unitsVersion, setUnitsVersion] = useState(0);
+  useEffect(() => { api.units(schoolId).then(setUnits).catch(() => {}); }, [schoolId, unitsVersion, version]);
   const loadSubjects = useCallback(() => { api.subjects(schoolId).then(setSubjects).catch(() => {}); }, [schoolId]);
   const loadStaff = useCallback(() => { if (branchId) api.staff(branchId).then(setStaff).catch(() => {}); }, [branchId]);
   useEffect(loadSubjects, [loadSubjects]);
@@ -427,6 +430,7 @@ function DepartmentsTab({ schoolId, branchId, people, onPeopleChanged }: {
               {[
                 d.kind === "academic" ? `${perDept(d.id)} ${perDept(d.id) === 1 ? "subject" : "subjects"}` : null,
                 `${members(d.id)} staff`,
+                `${units.filter((u) => u.department_id === d.id).length} units`,
               ].filter(Boolean).join(" · ")}
             </span>
             <span className="small block dept-head">
@@ -441,6 +445,9 @@ function DepartmentsTab({ schoolId, branchId, people, onPeopleChanged }: {
             <button className="with-icon" onClick={() => structure.addStandardDepartments(schoolId).then(reload)}>
               <Icon name="sparkle" size={16} />Add common departments
             </button>
+            <button className="with-icon" onClick={() => api.addStandardUnits(schoolId).then(() => { reload(); setUnitsVersion((x) => x + 1); })}>
+              <Icon name="network" size={16} />Add usual units
+            </button>
           </>
         )}
       />
@@ -453,8 +460,9 @@ function DepartmentsTab({ schoolId, branchId, people, onPeopleChanged }: {
           schoolId={schoolId}
           staff={staff}
           subjects={(subjects ?? []).filter((x) => x.department_id === open.id)}
+          units={units.filter((u) => u.department_id === open.id)}
           onClose={() => setOpen(null)}
-          onChanged={() => { loadStaff(); setVersion((x) => x + 1); onPeopleChanged(); }}
+          onChanged={() => { loadStaff(); loadSubjects(); setVersion((x) => x + 1); onPeopleChanged(); }}
         />
       )}
     </div>
@@ -463,13 +471,15 @@ function DepartmentsTab({ schoolId, branchId, people, onPeopleChanged }: {
 
 const profileOf = (p: StaffMember): StaffProfileIn => ({
   full_name: p.full_name, title: p.title, gender: p.gender, job_title: p.job_title, department_id: p.department_id,
-  teaching: p.teaching, staff_no: p.staff_no, employment_type: p.employment_type, date_joined: p.date_joined,
+  unit_id: p.unit_id, teaching: p.teaching, staff_no: p.staff_no, employment_type: p.employment_type, date_joined: p.date_joined,
   qualification: p.qualification,
 });
 
-function DepartmentDetail({ dept, branchId, schoolId, staff, subjects, onClose, onChanged }: {
-  dept: Item; branchId: string; schoolId: string; staff: StaffMember[]; subjects: Subject[]; onClose: () => void; onChanged: () => void;
+function DepartmentDetail({ dept, branchId, schoolId, staff, subjects, units, onClose, onChanged }: {
+  dept: Item; branchId: string; schoolId: string; staff: StaffMember[]; subjects: Subject[]; units: Unit[];
+  onClose: () => void; onChanged: () => void;
 }) {
+  const [unitEdit, setUnitEdit] = useState<Unit | "new" | null>(null);
   const look = departmentLook(String(dept.name), String(dept.kind));
   const [facilities, setFacilities] = useState<Item[]>([]);
   const [adding, setAdding] = useState("");
@@ -544,6 +554,35 @@ function DepartmentDetail({ dept, branchId, schoolId, staff, subjects, onClose, 
           )}
         </section>
 
+        <section>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <h3 className="with-glyph"><Glyph icon="network" hue="indigo" size={28} soft />Units</h3>
+            <button className="ghost small with-icon" onClick={() => setUnitEdit("new")}><Icon name="plus" size={14} />Add unit</button>
+          </div>
+          {units.length === 0 ? <p className="small muted">No units yet. Units are smaller teams inside the department, such as a Chemistry unit.</p> : (
+            <ul className="unit-list">
+              {units.map((u) => {
+                const head = staff.find((p) => p.user_id === u.head_user_id);
+                const people = staff.filter((p) => p.unit_id === u.id);
+                const subs = subjects.filter((x) => u.subject_ids.includes(x.id));
+                return (
+                  <li key={u.id}>
+                    <button className="unit-row" onClick={() => setUnitEdit(u)}>
+                      <span className="grow">
+                        <strong>{u.name}</strong>{!u.teaching && <span className="elective-tag">non-teaching</span>}
+                        <span className="block small muted">
+                          {head ? `Head: ${displayName(head)}` : "No unit head yet"} · {people.length} staff{subs.length ? ` · ${subs.map((x) => x.name).join(", ")}` : ""}
+                        </span>
+                      </span>
+                      <Icon name="edit" size={15} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
         {dept.kind === "academic" && (
           <section>
             <h3 className="with-glyph"><Glyph icon="book" hue="blue" size={28} soft />Subjects</h3>
@@ -565,6 +604,104 @@ function DepartmentDetail({ dept, branchId, schoolId, staff, subjects, onClose, 
           </section>
         )}
         {error && <p className="error">{error}</p>}
+      </div>
+      {unitEdit && (
+        <UnitForm
+          unit={unitEdit === "new" ? null : unitEdit}
+          dept={dept}
+          staff={staff}
+          subjects={subjects}
+          onClose={() => setUnitEdit(null)}
+          onSaved={() => { setUnitEdit(null); onChanged(); }}
+          branchId={branchId}
+          schoolId={schoolId}
+        />
+      )}
+    </Modal>
+  );
+}
+
+function UnitForm({ unit, dept, staff, subjects, schoolId, branchId, onClose, onSaved }: {
+  unit: Unit | null; dept: Item; staff: StaffMember[]; subjects: Subject[]; schoolId: string; branchId: string;
+  onClose: () => void; onSaved: () => void;
+}) {
+  const [name, setName] = useState(unit?.name ?? "");
+  const [teaching, setTeaching] = useState(unit?.teaching ?? dept.kind === "academic");
+  const [head, setHead] = useState(unit?.head_user_id ?? "");
+  const [subs, setSubs] = useState<string[]>(unit?.subject_ids ?? []);
+  const [members, setMembers] = useState<string[]>(staff.filter((p) => unit && p.unit_id === unit.id).map((p) => p.user_id));
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function save() {
+    if (name.trim().length < 2) return setError("Give the unit a name.");
+    setBusy(true);
+    try {
+      const body = { department_id: dept.id, name: name.trim(), teaching, head_user_id: head || null, description: unit?.description ?? null };
+      const list = unit ? await api.updateUnit(unit.id, body) : await api.addUnit(schoolId, body);
+      const saved = list.find((u) => u.department_id === dept.id && u.name.toLowerCase() === name.trim().toLowerCase());
+      if (saved) {
+        for (const x of subjects) {
+          const want = subs.includes(x.id);
+          if (want !== saved.subject_ids.includes(x.id)) await api.setSubjectUnit(x.id, want ? saved.id : null);
+        }
+        for (const p of staff) {
+          const want = members.includes(p.user_id), has = p.unit_id === saved.id;
+          if (want !== has) await api.updateStaff(branchId, p.user_id, { ...profileOf(p), department_id: want ? dept.id : p.department_id, unit_id: want ? saved.id : null });
+        }
+      }
+      onSaved();
+    } catch (err) {
+      setError(errorText(err));
+      setBusy(false);
+    }
+  }
+  const pool = [...staff].sort((a, b) => Number(b.department_id === dept.id) - Number(a.department_id === dept.id) || a.full_name.localeCompare(b.full_name));
+  return (
+    <Modal title={unit ? `${unit.name} unit` : `New unit in ${String(dept.name)}`} onClose={onClose}>
+      <div className="stack">
+        <div className="form-grid">
+          <Field label="Unit name"><input value={name} onChange={(e) => { setName(e.target.value); setError(""); }} placeholder="e.g. Chemistry" autoFocus /></Field>
+          <Field label="Unit head">
+            <select value={head} onChange={(e) => setHead(e.target.value)}>
+              <option value="">Nobody yet</option>
+              {pool.map((p) => <option key={p.user_id} value={p.user_id}>{displayName(p)}{p.job_title ? ` (${p.job_title})` : ""}</option>)}
+            </select>
+          </Field>
+        </div>
+        <label className="check"><input type="checkbox" checked={teaching} onChange={(e) => setTeaching(e.target.checked)} />Teaching unit</label>
+        {teaching && subjects.length > 0 && (
+          <fieldset>
+            <legend>Subjects this unit covers</legend>
+            <div className="chips">
+              {subjects.map((x) => (
+                <label key={x.id} className={`chip pick${subs.includes(x.id) ? " on" : ""}`}>
+                  <input type="checkbox" checked={subs.includes(x.id)} onChange={(e) => setSubs(e.target.checked ? [...subs, x.id] : subs.filter((y) => y !== x.id))} />
+                  {x.name}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+        <fieldset>
+          <legend>Staff in this unit</legend>
+          <div className="chips member-picks">
+            {pool.map((p) => (
+              <label key={p.user_id} className={`chip pick${members.includes(p.user_id) ? " on" : ""}`} title={p.job_title ?? undefined}>
+                <input type="checkbox" checked={members.includes(p.user_id)} onChange={(e) => setMembers(e.target.checked ? [...members, p.user_id] : members.filter((y) => y !== p.user_id))} />
+                {displayName(p)}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        {error && <p className="error">{error}</p>}
+        <div className="row">
+          <button className="primary" disabled={busy} onClick={save}>{busy ? "Saving…" : unit ? "Save unit" : "Add unit"}</button>
+          <button onClick={onClose}>Cancel</button>
+          {unit && <button className="danger-outline" onClick={() => {
+            if (window.confirm(`Delete the ${unit.name} unit? Its staff and subjects stay in the department.`))
+              api.deleteUnit(unit.id).then(onSaved).catch((err) => setError(errorText(err)));
+          }}>Delete unit</button>}
+        </div>
       </div>
     </Modal>
   );

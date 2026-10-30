@@ -35,12 +35,13 @@ from app.api.people import deferred_hashes, find_or_create_user
 from app.api.staff import ProfileIn, add_staff_role, save_profile
 from app.api.structure import make_beds, put_in_bed
 from app.api.teaching import check_teacher, find_teacher
+from app.api.electives import is_senior, make_group, set_choice
 from app.api.students import GuardianIn, _check_admission_no, _link_guardian, _next_admission_no
 from app.core.db import get_db
 from app.core.phone import normalize_phone
 from app.core.security import hash_password
 from app.models import (
-    ClassSubject, Bed, Board, BoardMember, BoardingStatus, Branch, Club, ClubKind, Department, DepartmentKind, EmploymentType,
+    TeachingGroup, Unit, ClassSubject, Bed, Board, BoardMember, BoardingStatus, Branch, Club, ClubKind, Department, DepartmentKind, EmploymentType,
     EventCategory, Facility, FacilityKind, Gender, Hostel, HostelGender, HostelRoom, House, Membership, Role, School,
     SchoolClass, SchoolEvent, Student, Subject, User, Vehicle, VehicleKind,
 )
@@ -161,7 +162,8 @@ VEHICLE_KINDS = {"Bus": VehicleKind.bus, "Van": VehicleKind.van, "Car": VehicleK
 EMPLOYMENT = {"Full time": EmploymentType.full_time, "Part time": EmploymentType.part_time,
               "Contract": EmploymentType.contract, "NYSC corps member": EmploymentType.nysc, "NYSC": EmploymentType.nysc,
               "Corps member": EmploymentType.nysc, "Volunteer": EmploymentType.volunteer}
-ACCESS = {"Head / principal": Role.head, "Principal": Role.head, "Head": Role.head, "Bursar": Role.bursar,
+ACCESS = {"Head / principal": Role.head, "Principal": Role.head, "Head": Role.head, "Vice principal": Role.vice_principal,
+          "IT team": Role.it_admin, "IT admin": Role.it_admin, "Bursar": Role.bursar,
           "Teacher": Role.teacher, "House parent": Role.house_parent, "Support staff": Role.support, "None": Role.support}
 COLOURS = {
     "red": "#d32f2f", "blue": "#1e63d6", "green": "#1f9d55", "yellow": "#f2c200", "gold": "#d4a017", "purple": "#7b3fbf",
@@ -342,6 +344,10 @@ NON_TEACHING = re.compile(r"bursar|account|cook|driver|security|cleaner|gardener
 
 def role_from_job(job: str, teaching: bool) -> Role:
     j = job.lower()
+    if re.search(r"vice ?principal|deputy ?(principal|head)", j):
+        return Role.vice_principal
+    if re.search(r"\bict officer|\bit (officer|admin|manager)|systems? admin", j):
+        return Role.it_admin
     if "vice" not in j and "deputy" not in j and re.search(r"principal|head ?teacher|head ?master|head ?mistress|rector", j):
         return Role.head
     if re.search(r"bursar|accountant|cashier", j):
@@ -362,6 +368,9 @@ def do_staff(ctx: Ctx, r: dict) -> tuple[str, str]:
         teaching = not NON_TEACHING.search(job.lower()) if job else True
     role = pick(r.get("access"), ACCESS, "App access", None) or role_from_job(job, teaching)
     dept, _ = find_department(ctx, text(r.get("department")))
+    unit = find_unit(ctx, text(r.get("unit")), dept)
+    if unit and not dept:
+        dept = unit.department
     hod = yes(r.get("hod"))
     if hod and not dept:
         raise RowProblem("Head of department is Yes, but no department is given")
@@ -371,7 +380,7 @@ def do_staff(ctx: Ctx, r: dict) -> tuple[str, str]:
     profile = ProfileIn(
         staff_no=text(r.get("staff_no")) or None, title=text(r.get("title")) or None,
         gender=pick(r.get("gender"), GENDERS, "Gender", None), job_title=job or None,
-        department_id=dept.id if dept else None, teaching=teaching,
+        department_id=dept.id if dept else None, unit_id=unit.id if unit else None, teaching=teaching,
         employment_type=pick(r.get("employment"), EMPLOYMENT, "Employment", EmploymentType.full_time),
         date_joined=date_of(r.get("date_joined"), "Date joined"), qualification=text(r.get("qualification")) or None,
     )
@@ -708,6 +717,74 @@ def do_subject_teacher(ctx: Ctx, r: dict) -> tuple[str, str]:
     return ("added" if made else "updated"), f"{subj.name} in {where}" + (f", taught by {t.full_name}" if t else "")
 
 
+def unit_names(ctx: Ctx) -> list[str]:
+    return list(ctx.db.scalars(select(Unit.name).where(Unit.school_id == ctx.school.id).order_by(Unit.name)))
+
+
+def find_unit(ctx: Ctx, name: str, dept: Department | None) -> Unit | None:
+    if not name:
+        return None
+    q = select(Unit).where(Unit.school_id == ctx.school.id, func.lower(Unit.name) == name.lower())
+    if dept:
+        q = q.where(Unit.department_id == dept.id)
+    found = list(ctx.db.scalars(q))
+    if len(found) == 1:
+        return found[0]
+    if len(found) > 1:
+        raise RowProblem(f"More than one department has a unit called {name}. Give the department too.")
+    raise RowProblem(f"There's no unit called '{name}'" + (f" in {dept.name}" if dept else "") + ". Add it first.")
+
+
+def do_unit(ctx: Ctx, r: dict) -> tuple[str, str]:
+    dept, _ = find_department(ctx, need(r, "department", "Department"))
+    name = need(r, "name", "Unit")
+    u = ctx.db.scalar(select(Unit).where(Unit.department_id == dept.id, func.lower(Unit.name) == name.lower()))
+    result = "updated" if u else "added"
+    if not u:
+        u = Unit(school_id=ctx.school.id, department_id=dept.id, name=name, teaching=dept.kind == DepartmentKind.academic)
+        ctx.db.add(u)
+        ctx.db.flush()
+    t = yes(r.get("teaching"))
+    if t is not None:
+        u.teaching = t
+    if text(r.get("head")):
+        u.head_user_id = teacher_of(ctx, text(r.get("head"))).id
+    linked = []
+    for sn in [x.strip() for x in text(r.get("subjects")).split(",") if x.strip()]:
+        subj = ctx.db.scalar(select(Subject).where(Subject.school_id == ctx.school.id, func.lower(Subject.name) == sn.lower()))
+        if not subj:
+            raise RowProblem(f"There's no subject called '{sn}'")
+        subj.unit_id, subj.department_id = u.id, dept.id
+        linked.append(subj.name)
+    return result, f"{u.name} unit in {dept.name}" + (f" ({', '.join(linked)})" if linked else "")
+
+
+def do_elective_choice(ctx: Ctx, r: dict) -> tuple[str, str]:
+    student = find_student(ctx, need(r, "admission_no", "Admission number"))
+    level = student.school_class.level if student.school_class else None
+    if not level or not is_senior(level):
+        raise RowProblem(f"{student.full_name} isn't in an SS class")
+    name = need(r, "subject", "Subject")
+    subj = ctx.db.scalar(select(Subject).where(Subject.school_id == ctx.school.id, func.lower(Subject.name) == name.lower()))
+    if not subj:
+        raise RowProblem(f"There's no subject called '{name}'")
+    if yes(r.get("drop")):
+        set_choice(ctx.db, student, subj, None, False)
+        return "updated", f"{student.full_name} dropped {subj.name}"
+    group = None
+    if text(r.get("teacher")):
+        t = teacher_of(ctx, text(r.get("teacher")))
+        group = ctx.db.scalar(select(TeachingGroup).where(TeachingGroup.branch_id == ctx.branch.id, TeachingGroup.level == level,
+                                                          TeachingGroup.subject_id == subj.id, TeachingGroup.teacher_user_id == t.id))
+        if not group:
+            group = make_group(ctx.db, ctx.branch, level, subj, t.id)
+    offered = ctx.db.scalar(select(ClassSubject.id).where(ClassSubject.class_id == student.class_id, ClassSubject.subject_id == subj.id))
+    if not offered:
+        ctx.db.add(ClassSubject(class_id=student.class_id, subject_id=subj.id, compulsory=False))
+    set_choice(ctx.db, student, subj, group, True)
+    return "added", f"{student.full_name} takes {subj.name}" + (f" with {group.name.split(': ')[-1]}" if group else "")
+
+
 KINDS: dict[str, Kind] = {k.key: k for k in [
     Kind("departments", "Departments", "department", "Academic departments and support teams.", "departments", "sky", [
         Col("Department name", "name", True, "e.g. Sciences, Mathematics, Bursary", aliases=("name", "department"), width=28),
@@ -732,19 +809,20 @@ KINDS: dict[str, Kind] = {k.key: k for k in [
         Col("Position / job title", "job_title", hint="e.g. Principal, Vice Principal (Academics), Chemistry Teacher, Bursar, Cook",
             aliases=("position", "job title", "job"), width=30),
         Col("Department", "department", choices=department_names, width=24),
+        Col("Unit", "unit", hint="Optional. A unit inside the department, e.g. Chemistry", choices=unit_names, width=18),
         Col("Head of department", "hod", hint="Yes makes them the head of the department in the column before.",
             choices=YES_NO, aliases=("hod",), width=12),
         Col("Teaching staff", "teaching", hint="Yes or No. Blank: worked out from the position.", choices=YES_NO, width=12),
         Col("App access", "access", hint="Blank: worked out from the position (Principal → Head, Bursar → Bursar, Boarding master → House parent, teachers → Teacher).",
-            choices=["Head / principal", "Bursar", "Teacher", "House parent", "Support staff"], width=18),
+            choices=["Head / principal", "Vice principal", "IT team", "Bursar", "Teacher", "House parent", "Support staff"], width=18),
         Col("Staff number", "staff_no", aliases=("staff no", "staff id"), width=14),
         Col("Employment", "employment", choices=["Full time", "Part time", "Contract", "NYSC corps member", "Volunteer"], width=16),
         Col("Date joined", "date_joined", hint="Day/month/year, e.g. 05/09/2019", width=14),
         Col("Qualification", "qualification", hint="e.g. B.Sc. Ed, NCE, M.Sc.", width=16),
     ], do_staff, [
-        ["Rev Fr", "John Okafor", "Male", "08031234567", "principal@school.ng", "Principal", "", "", "Yes", "", "JMC/001", "Full time", "01/09/2018", "M.Ed"],
-        ["Mrs", "Ngozi Eze", "Female", "08051234567", "", "Chemistry Teacher", "Sciences", "Yes", "Yes", "", "JMC/014", "Full time", "12/01/2021", "B.Sc. Ed"],
-        ["Mr", "Musa Bello", "Male", "07061234567", "", "Driver", "Transport", "", "No", "", "JMC/040", "Contract", "", ""],
+        ["Rev Fr", "John Okafor", "Male", "08031234567", "principal@school.ng", "Principal", "", "", "", "Yes", "", "JMC/001", "Full time", "01/09/2018", "M.Ed"],
+        ["Mrs", "Ngozi Eze", "Female", "08051234567", "", "Chemistry Teacher", "Sciences", "Chemistry", "Yes", "Yes", "", "JMC/014", "Full time", "12/01/2021", "B.Sc. Ed"],
+        ["Mr", "Musa Bello", "Male", "07061234567", "", "Driver", "Transport", "Transport", "", "No", "", "JMC/040", "Contract", "", ""],
     ]),
     Kind("board", "Board members", "board member", "Members of the school's board. Each gets a read-only login.", "users", "rose", [
         Col("Board", "board", hint="Blank means Board of Governors. A new board is made if needed.", width=22),
@@ -841,6 +919,21 @@ KINDS: dict[str, Kind] = {k.key: k for k in [
         Col("Elective", "elective", hint="Yes if only some students take it (SS electives, Igbo or Yoruba...).",
             choices=YES_NO, aliases=("optional",), width=10),
     ], do_subject_teacher, [["SS 1", "Chemistry", "Ngozi Eze", "Yes"], ["JSS 2A", "Mathematics", "JMC/STF/019", ""]]),
+    Kind("units", "Units", "unit", "Units inside departments (Chemistry unit, Guidance and Counselling...) with their heads and subjects.",
+         "network", "indigo", [
+        Col("Department", "department", True, choices=department_names, width=24),
+        Col("Unit", "name", True, "e.g. Chemistry, Guidance and Counselling", aliases=("unit name",), width=26),
+        Col("Teaching unit", "teaching", hint="Yes or No. Blank: Yes in academic departments.", choices=YES_NO, width=12),
+        Col("Unit head", "head", hint="Name as on the Staff page, staff number or phone", choices=teacher_names, width=26),
+        Col("Subjects", "subjects", hint="Subjects this unit covers, separated by commas, e.g. Igbo, Yoruba, Hausa", width=34),
+    ], do_unit, [["Sciences", "Chemistry", "Yes", "Ngozi Eze", "Chemistry"], ["Guidance and Counselling", "Guidance and Counselling", "No", "", ""]]),
+    Kind("elective-choices", "SS elective choices", "choice", "Which electives each SS student takes, and with which teacher. "
+         "A group is made for a teacher the first time they are named.", "graduation-cap", "violet", [
+        Col("Admission number", "admission_no", True, aliases=("admission no", "adm no"), width=18),
+        Col("Subject", "subject", True, choices=subject_names, width=26),
+        Col("Teacher", "teacher", hint="Optional. The teacher (group) for this student.", choices=teacher_names, width=26),
+        Col("Drop", "drop", hint="Yes to take this subject away from the student.", choices=YES_NO, width=8),
+    ], do_elective_choice, [["JMC/23/0001", "Chemistry", "Ngozi Eze", ""], ["JMC/23/0002", "Literature in English", "", ""]]),
 ]}
 
 

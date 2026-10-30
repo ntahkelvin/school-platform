@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, errorText, type Subject } from "./api";
 import { ImportButton } from "./Bulk";
+import ElectivesPanel from "./Electives";
 import Icon from "./Icon";
 import { departmentLook, STAGE_LOOK, stageOf, subjectLook } from "./look";
 import { Avatar, Empty, hue, Modal, Stat } from "./ui";
@@ -9,6 +10,7 @@ import { Avatar, Empty, hue, Modal, Stat } from "./ui";
 export interface Slot {
   id: string; subject_id: string; subject_name: string; department_name: string | null;
   teacher_user_id: string | null; teacher_name: string | null; compulsory: boolean;
+  in_groups?: boolean; group_teachers?: string[];
 }
 export interface TClass {
   id: string; name: string; level: string; arm: string; student_count: number;
@@ -17,13 +19,16 @@ export interface TClass {
 export interface Teacher {
   user_id: string; full_name: string; title: string | null; job_title: string | null; department_name: string | null; teaching: boolean;
 }
-interface View { classes: TClass[]; teachers: Teacher[] }
+interface View {
+  classes: TClass[]; teachers: Teacher[];
+  groups: { teacher_user_id: string | null; level: string; subject_name: string; students: number }[];
+}
 
 const req = <T,>(method: string, path: string, body?: unknown) => api.raw<T>(method, path, body);
 const nameOf = (t: Teacher) => [t.title, t.full_name].filter(Boolean).join(" ");
 
 /** Choose a teacher, with the subject's own department first. */
-function TeacherPicker({ title, teachers, current, department, onPick, onClose }: {
+export function TeacherPicker({ title, teachers, current, department, onPick, onClose }: {
   title: string; teachers: Teacher[]; current: string | null; department?: string | null;
   onPick: (userId: string | null) => void; onClose: () => void;
 }) {
@@ -128,11 +133,11 @@ function SubjectChooser({ cls, classes, subjects, onSave, onClose }: {
   );
 }
 
-function ClassCard({ c, onPickForm, onPickSlot, onChoose }: {
-  c: TClass; onPickForm: () => void; onPickSlot: (s: Slot) => void; onChoose: () => void;
+function ClassCard({ c, onPickForm, onPickSlot, onChoose, onElectives }: {
+  c: TClass; onPickForm: () => void; onPickSlot: (s: Slot) => void; onChoose: () => void; onElectives: () => void;
 }) {
   const look = STAGE_LOOK[stageOf(c.level)];
-  const filled = c.subjects.filter((s) => s.teacher_user_id).length;
+  const filled = c.subjects.filter((s) => s.teacher_user_id || (s.in_groups && s.group_teachers?.length)).length;
   return (
     <article className="teach-card" style={hue(look.hue)}>
       <header className="teach-head">
@@ -161,9 +166,15 @@ function ClassCard({ c, onPickForm, onPickSlot, onChoose }: {
                 <li key={s.id} className={s.teacher_user_id ? "" : "no-teacher"}>
                   <span className="subject-chip-icon" style={hue(l.hue)}><Icon name={l.icon} size={13} stroke={2.2} /></span>
                   <span className="slot-subject">{s.subject_name}{!s.compulsory && <span className="elective-tag">elective</span>}</span>
-                  <button className="slot-teacher" onClick={() => onPickSlot(s)}>
-                    {s.teacher_name ?? <span className="needs">Choose teacher</span>}
-                  </button>
+                  {s.in_groups ? (
+                    <button className="slot-teacher groups" onClick={onElectives} title={s.group_teachers?.join(", ")}>
+                      {s.group_teachers?.length ? `${s.group_teachers.length} ${s.group_teachers.length === 1 ? "group" : "groups"}` : <span className="needs">Set up groups</span>}
+                    </button>
+                  ) : (
+                    <button className="slot-teacher" onClick={() => onPickSlot(s)}>
+                      {s.teacher_name ?? <span className="needs">Choose teacher</span>}
+                    </button>
+                  )}
                 </li>
               );
             })}
@@ -178,7 +189,7 @@ function ClassCard({ c, onPickForm, onPickSlot, onChoose }: {
 export default function TeachingPage({ branchId, schoolId }: { branchId: string; schoolId: string }) {
   const [view, setView] = useState<View | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [mode, setMode] = useState<"class" | "teacher">("class");
+  const [mode, setMode] = useState<"class" | "teacher" | "electives">("class");
   const [level, setLevel] = useState("");
   const [picking, setPicking] = useState<{ kind: "form"; c: TClass } | { kind: "slot"; c: TClass; s: Slot } | null>(null);
   const [choosing, setChoosing] = useState<TClass | null>(null);
@@ -202,8 +213,10 @@ export default function TeachingPage({ branchId, schoolId }: { branchId: string;
       for (const s of c.subjects) if (s.teacher_user_id)
         (m.get(s.teacher_user_id) ?? m.set(s.teacher_user_id, { slots: [], forms: [] }).get(s.teacher_user_id)!).slots.push({ subject: s.subject_name, cls: c.name });
     }
+    for (const g of view?.groups ?? []) if (g.teacher_user_id)
+      (m.get(g.teacher_user_id) ?? m.set(g.teacher_user_id, { slots: [], forms: [] }).get(g.teacher_user_id)!).slots.push({ subject: g.subject_name, cls: `${g.level} group (${g.students})` });
     return m;
-  }, [classes]);
+  }, [classes, view?.groups]);
   const teachingStaff = (view?.teachers ?? []).filter((t) => t.teaching);
   const busyTeachers = teachingStaff.filter((t) => load_.get(t.user_id)?.slots.length);
 
@@ -212,9 +225,9 @@ export default function TeachingPage({ branchId, schoolId }: { branchId: string;
       {view && (
         <div className="stat-strip">
           <Stat icon="user" hue="orange" value={`${classes.filter((c) => c.form_teacher_id).length}/${classes.length}`} label="classes have a class teacher" />
-          <Stat icon="presentation" hue="sky" value={`${slots.filter((s) => s.teacher_user_id).length}/${slots.length}`} label="subjects have a teacher" />
+          <Stat icon="presentation" hue="sky" value={`${slots.filter((s) => s.teacher_user_id || s.group_teachers?.length).length}/${slots.length}`} label="subjects have a teacher" />
           <Stat icon="staff" hue="cyan" value={`${busyTeachers.length}/${teachingStaff.length}`} label="teachers have classes" />
-          <Stat icon="book" hue="red" value={slots.filter((s) => !s.teacher_user_id).length} label="need a teacher" />
+          <Stat icon="book" hue="red" value={slots.filter((s) => !s.teacher_user_id && !s.group_teachers?.length).length} label="need a teacher" />
         </div>
       )}
 
@@ -223,6 +236,7 @@ export default function TeachingPage({ branchId, schoolId }: { branchId: string;
           <div className="segmented" role="tablist">
             <button role="tab" aria-selected={mode === "class"} className={mode === "class" ? "on" : ""} onClick={() => setMode("class")}><Icon name="classes" size={15} />By class</button>
             <button role="tab" aria-selected={mode === "teacher"} className={mode === "teacher" ? "on" : ""} onClick={() => setMode("teacher")}><Icon name="staff" size={15} />By teacher</button>
+            <button role="tab" aria-selected={mode === "electives"} className={mode === "electives" ? "on" : ""} onClick={() => setMode("electives")}><Icon name="graduation-cap" size={15} />SS electives</button>
           </div>
           <div className="row wrap">
             <ImportButton branchId={branchId} kind="subject-teachers" label="Upload" onDone={load} />
@@ -252,11 +266,13 @@ export default function TeachingPage({ branchId, schoolId }: { branchId: string;
                 <ClassCard key={c.id} c={c}
                            onPickForm={() => setPicking({ kind: "form", c })}
                            onPickSlot={(s) => setPicking({ kind: "slot", c, s })}
-                           onChoose={() => setChoosing(c)} />
+                           onChoose={() => setChoosing(c)} onElectives={() => setMode("electives")} />
               ))}
             </div>
           </>
         )}
+
+        {view && mode === "electives" && <ElectivesPanel branchId={branchId} teachers={view.teachers} />}
 
         {view && mode === "teacher" && (
           <div className="load-list">

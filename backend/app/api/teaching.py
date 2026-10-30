@@ -12,7 +12,7 @@ from app.api.deps import current_user
 from app.api.staff import STAFF_ROLES
 from app.core.db import get_db
 from app.models import (
-    Branch, ClassSubject, Department, Membership, Role, SchoolClass, StaffProfile, Student, StudentStatus, Subject, User,
+    TeachingGroup, StudentElective, Branch, ClassSubject, Department, Membership, Role, SchoolClass, StaffProfile, Student, StudentStatus, Subject, User,
 )
 
 router = APIRouter(prefix="/api", tags=["teaching"])
@@ -61,6 +61,8 @@ class SlotOut(BaseModel):
     teacher_user_id: uuid.UUID | None
     teacher_name: str | None
     compulsory: bool
+    in_groups: bool = False                 # SS electives are taught in groups across the level
+    group_teachers: list[str] = []
 
 
 class ClassOut(BaseModel):
@@ -74,9 +76,17 @@ class ClassOut(BaseModel):
     subjects: list[SlotOut]
 
 
+class GroupLoad(BaseModel):
+    teacher_user_id: uuid.UUID | None
+    level: str
+    subject_name: str
+    students: int
+
+
 class TeachingOut(BaseModel):
     classes: list[ClassOut]
     teachers: list[TeacherOut]
+    groups: list[GroupLoad] = []
 
 
 def staff_ids(db: Session, branch_id: uuid.UUID) -> set[uuid.UUID]:
@@ -109,29 +119,41 @@ def teaching_view(db: Session, branch: Branch) -> TeachingOut:
         p = profiles.get(uid)
         return " ".join(x for x in [p.title if p else None, u.full_name] if x)
 
+    group_teachers: dict[tuple[str, uuid.UUID], list[str]] = {}
+    group_loads: list[GroupLoad] = []
+    sizes = dict(db.execute(select(StudentElective.group_id, func.count()).where(StudentElective.group_id.is_not(None))
+                            .group_by(StudentElective.group_id)).all())
+    for g in db.scalars(select(TeachingGroup).where(TeachingGroup.branch_id == branch.id).order_by(TeachingGroup.name)):
+        group_teachers.setdefault((g.level, g.subject_id), []).append(name(g.teacher_user_id) or "No teacher yet")
+        group_loads.append(GroupLoad(teacher_user_id=g.teacher_user_id, level=g.level,
+                                     subject_name=subjects[g.subject_id].name, students=sizes.get(g.id, 0)))
+
     out_classes = []
     for c in classes:
+        senior = c.level.upper().startswith("SS")
         mine = sorted(slots.get(c.id, []), key=lambda x: (not x.compulsory, subjects[x.subject_id].name.lower()))
         out_classes.append(ClassOut(
             id=c.id, name=c.name, level=c.level, arm=c.arm, student_count=counts.get(c.id, 0),
             form_teacher_id=c.form_teacher_id, form_teacher_name=name(c.form_teacher_id),
             subjects=[SlotOut(id=x.id, subject_id=x.subject_id, subject_name=subjects[x.subject_id].name,
                               department_name=depts.get(subjects[x.subject_id].department_id),
-                              teacher_user_id=x.teacher_user_id, teacher_name=name(x.teacher_user_id), compulsory=x.compulsory)
+                              teacher_user_id=x.teacher_user_id, teacher_name=name(x.teacher_user_id), compulsory=x.compulsory,
+                              in_groups=senior and not x.compulsory,
+                              group_teachers=group_teachers.get((c.level, x.subject_id), []) if senior and not x.compulsory else [])
                       for x in mine],
         ))
 
     def is_teaching(uid):
         p = profiles.get(uid)
         r = roles.get(uid, set())
-        return (p.teaching if p else True) and bool(r & {Role.teacher, Role.head, Role.house_parent})
+        return (p.teaching if p else True) and bool(r & {Role.teacher, Role.head, Role.vice_principal, Role.house_parent})
     teachers = [TeacherOut(user_id=u.id, full_name=u.full_name, title=profiles[u.id].title if u.id in profiles else None,
                            job_title=profiles[u.id].job_title if u.id in profiles else None,
                            department_name=depts.get(profiles[u.id].department_id) if u.id in profiles else None,
                            teaching=is_teaching(u.id))
                 for u in users.values()]
     teachers.sort(key=lambda t: (not t.teaching, t.full_name.lower()))
-    return TeachingOut(classes=out_classes, teachers=teachers)
+    return TeachingOut(classes=out_classes, teachers=teachers, groups=group_loads)
 
 
 def own_class(db: Session, user: User, class_id: uuid.UUID) -> tuple[SchoolClass, Branch]:
