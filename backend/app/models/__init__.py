@@ -2,7 +2,10 @@
 from app.models.attendance import AttendanceKind, AttendanceRecord, AttendanceStatus
 from app.models.academics import AcademicSession, ClassSubject, SchoolClass, StudentElective, Subject, TeachingGroup, Term
 from app.models.governance import Board, BoardMember
-from app.models.people import BoardingStatus, Gender, Student, StudentGuardian, StudentStatus
+from app.models.people import (
+    BoardingStatus, ConductEntry, Gender, Student, StudentAward, StudentClub, StudentContact, StudentDocument, StudentEvent, StudentGuardian,
+    StudentNote, StudentStatus,
+)
 from app.models.structure import (
     AssessmentComponent, AssessmentScheme, Bed, Club, ClubKind, Department, DepartmentKind, EventCategory, Facility,
     FacilityKind, GradeBand, GradingScale, Hostel, HostelGender, HostelRoom, House, Period, PeriodKind, Policy,
@@ -29,7 +32,8 @@ __all__ = [
     "House", "Period", "PeriodKind", "Policy", "SchoolEvent", "Section", "Unit", "Vehicle", "VehicleKind",
     "AttendanceKind", "AttendanceRecord", "AttendanceStatus",
     "AcademicSession", "ClassSubject", "StudentElective", "TeachingGroup", "SchoolClass", "Subject", "Term",
-    "BoardingStatus", "Gender", "Student", "StudentGuardian", "StudentStatus",
+    "BoardingStatus", "ConductEntry", "Gender", "Student", "StudentAward", "StudentClub", "StudentContact", "StudentDocument", "StudentEvent",
+    "StudentGuardian", "StudentNote", "StudentStatus",
     "Branch", "School", "SchoolGroup", "SchoolType",
     "EmploymentType", "StaffDocument", "StaffProfile", "StaffQualification",
     "DutyAssignment", "LeaveRequest", "LessonNote", "StaffAttendance", "StaffDaySettings",

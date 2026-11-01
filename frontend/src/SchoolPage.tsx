@@ -27,6 +27,7 @@ import { org } from "./orgApi";
 import { go } from "./router";
 import RightsPage from "./Rights";
 import LibraryPage from "./Library";
+import HouseLeague from "./HouseLeague";
 import AssetsPage from "./Assets";
 import { AreaContext, rightsIn } from "./rightsApi";
 import { href, type SchoolTab } from "./router";
@@ -877,10 +878,11 @@ function HousesTab({ schoolId, people }: { schoolId: string; people: PersonOptio
   const clubApi = useMemo(() => records("school", schoolId, "clubs"), [schoolId]);
   return (
     <div className="stack wide-stack">
+      <HouseLeague schoolId={schoolId} />
       <RecordEditor
         title="Houses"
         noun="house"
-        intro="Sports and inter-house competition houses. Students are put into houses later."
+        intro="Sports and inter-house competition houses. Choose each student's house on their profile, or share them fairly with one button."
         fields={[
           { key: "name", label: "House name", required: true, placeholder: "e.g. Aggrey House" },
           { key: "colour", label: "House colour", type: "colour" },

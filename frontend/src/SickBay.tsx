@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { InsightList, useBusy } from "./GrowthBits";
 import { StudentPicker, useOpsMeta } from "./Helpdesk";
 import Icon from "./Icon";
+import { StudentLink } from "./StudentLink";
 import { niceDate } from "./dayApi";
 import { dayTime, hhmm, ops, OUTCOME_LOOK, type Clinic, type Health, type Stock, type StudentCard, type Visit, type VisitIn } from "./opsApi";
 import { Avatar, Empty, Field, Glyph, hue, Modal } from "./ui";
@@ -218,7 +219,7 @@ function VisitCard({ v, onHealth, onChanged }: { v: Visit; onHealth: (id: string
     <article className="visit-card" style={hue(lk.hue)}>
       <div className="pass-top">
         <Avatar name={who} size={38} />
-        <span className="pass-who"><strong>{who}</strong><span className="muted small">{v.student ? `${v.student.class_name ?? ""}${v.student.boarder ? " · boarder" : ""}` : "Staff"} · {hhmm(v.seen_at)}</span></span>
+        <span className="pass-who"><strong>{v.student ? <StudentLink id={v.student.id} name={who} /> : who}</strong><span className="muted small">{v.student ? `${v.student.class_name ?? ""}${v.student.boarder ? " · boarder" : ""}` : "Staff"} · {hhmm(v.seen_at)}</span></span>
         {v.temperature != null && <span className={`temp${hot ? " hot" : ""}`}>{v.temperature}°</span>}
       </div>
       <p className="small"><b>{v.complaint}</b>{v.treatment && ` · ${v.treatment}`}</p>

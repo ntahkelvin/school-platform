@@ -518,10 +518,14 @@ def pass_out(p: GatePass, nm: Names, db: Session, user: User, school: School) ->
     s = db.get(Student, p.student_id)
     guardians = []
     if s:
-        for g in db.scalars(select(StudentGuardian).where(StudentGuardian.student_id == s.id)):
+        # Only people allowed to collect the student (set on the student's profile).
+        for g in db.scalars(select(StudentGuardian).where(StudentGuardian.student_id == s.id, StudentGuardian.can_pick_up.is_(True))):
             u = db.get(User, g.user_id)
             if u:
                 guardians.append({"name": u.full_name, "phone": u.phone, "relation": g.relationship_label})
+        from app.models import StudentContact
+        for c in db.scalars(select(StudentContact).where(StudentContact.student_id == s.id)):
+            guardians.append({"name": c.name, "phone": c.phone, "relation": c.relationship_label})
     health = db.scalar(select(StudentHealth).where(StudentHealth.student_id == p.student_id))
     return {"id": str(p.id), "code": p.code, "student": student_card(db, s), "kind": p.kind, "kind_label": PASS_KINDS.get(p.kind, p.kind),
             "reason": p.reason, "leave_at": p.leave_at.isoformat(), "return_by": p.return_by.isoformat() if p.return_by else None,

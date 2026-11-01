@@ -11,6 +11,7 @@ import { CheckInCard, KudosCard, MyGrowthCard } from "./GrowthMe";
 import { HelpCard, MyDeskCards } from "./OpsMe";
 import { MyCleaningCard } from "./Cleaning";
 import { MyLibraryCard } from "./Library";
+import { StudentLink } from "./StudentLink";
 import { LeaveWaitingCard, MyDayCard, MyDutiesCard, MyLeaveCard, MyNotesCard, ToReviewCard } from "./StaffDayMe";
 import { Avatar, Empty, Field, Glyph, hue, Modal, Stat } from "./ui";
 
@@ -69,7 +70,7 @@ function PupilList({ pupils }: { pupils: Pupil[] }) {
       {pupils.map((p) => (
         <li key={p.id}>
           <Avatar name={p.name.split(", ").reverse().join(" ")} size={32} />
-          <span className="grow"><strong>{p.name}</strong><span className="block small muted mono">{p.admission_no}</span></span>
+          <span className="grow"><strong><StudentLink id={p.id} name={p.name} /></strong><span className="block small muted mono">{p.admission_no}</span></span>
           {p.class_name && <span className="class-chip" style={hue(STAGE_LOOK[stageOf(p.class_name)].hue)}>{p.class_name}</span>}
           <span className="hue-chip" style={hue(p.gender === "female" ? "pink" : "blue")}>{p.gender === "female" ? "F" : "M"}</span>
           {p.boarder && <span className="hue-chip" style={hue("indigo")}><Icon name="bed" size={12} /></span>}

@@ -4,6 +4,7 @@ import { api, errorText, type SchoolClass } from "./api";
 import { InsightList, useBusy } from "./GrowthBits";
 import { StudentPicker } from "./Helpdesk";
 import Icon from "./Icon";
+import { StudentLink } from "./StudentLink";
 import { PrintSheet, Qr, ScanBox, beep } from "./Scanner";
 import {
   lib, loadLibMeta, type BookDetail, type BookIn, type BookRow, type BorrowerInfo, type Found, type LibMeta, type LibOverview, type LibSettings, type LoanRow,
@@ -138,7 +139,7 @@ function LibraryDesk({ schoolId, onChange }: { schoolId: string; onChange: () =>
           <span className="book-mini" style={{ background: bookColour(returning.book) }}><Icon name="book" size={22} /></span>
           <div className="grow">
             <h3>{returning.book.title}</h3>
-            <p className="small">{returning.copy.number} · borrowed by <b>{returning.loan!.borrower.name}</b>{returning.loan!.borrower.class_name && ` (${returning.loan!.borrower.class_name})`} · due {nice(returning.loan!.due_on)}
+            <p className="small">{returning.copy.number} · borrowed by <b>{returning.loan!.borrower.kind === "student" ? <StudentLink id={returning.loan!.borrower.id} name={returning.loan!.borrower.name} /> : returning.loan!.borrower.name}</b>{returning.loan!.borrower.class_name && ` (${returning.loan!.borrower.class_name})`} · due {nice(returning.loan!.due_on)}
               {returning.loan!.days_late > 0 && <span className="hue-chip" style={hue("red")}>{returning.loan!.days_late} days late</span>}</p>
             <ReturnButtons busy={busy} onReturn={giveBack} />
           </div>
@@ -151,7 +152,7 @@ function LibraryDesk({ schoolId, onChange }: { schoolId: string; onChange: () =>
           <div className="row">
             <Avatar name={who.borrower.name} size={52} />
             <div className="grow">
-              <h3>{who.borrower.name}</h3>
+              <h3>{who.borrower.kind === "student" ? <StudentLink id={who.borrower.id} name={who.borrower.name} /> : who.borrower.name}</h3>
               <p className="muted small">{who.borrower.kind === "student" ? `${who.borrower.class_name ?? ""} · ${who.borrower.admission_no ?? ""}` : who.borrower.job_title ?? "Staff"} · {who.books_ever} books borrowed ever</p>
             </div>
             <span className="borrow-count"><b>{who.can_borrow}</b>of {who.limit} left</span>
@@ -363,7 +364,7 @@ function LoansTab({ schoolId, onChange }: { schoolId: string; onChange: () => vo
         {(rows ?? []).map((l) => (
           <li key={l.id} className={l.days_late ? "late" : ""}>
             <span className="book-mini" style={{ background: bookColour(l.book) }}><Icon name="book" size={16} /></span>
-            <span className="grow"><strong>{l.book.title}</strong><small>{l.number} · {l.borrower.name}{l.borrower.class_name ? ` (${l.borrower.class_name})` : ""}</small></span>
+            <span className="grow"><strong>{l.book.title}</strong><small>{l.number} · {l.borrower.kind === "student" ? <StudentLink id={l.borrower.id} name={l.borrower.name} /> : l.borrower.name}{l.borrower.class_name ? ` (${l.borrower.class_name})` : ""}</small></span>
             <span className="loan-when">{l.returned_at ? <>back {nice(l.returned_at)}</> : <>due {nice(l.due_on)}</>}{l.days_late > 0 && <b>{l.days_late} days late</b>}</span>
             {!l.returned_at && <span className="row">
               <button className="small" disabled={busy} onClick={() => run(async () => { await lib.renew(l.id); load(); })}>Renew</button>

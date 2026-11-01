@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { addDays, DAY_SHORT, iso, monday, niceDate } from "./dayApi";
 import { InsightList, useBusy } from "./GrowthBits";
 import Icon from "./Icon";
+import { StudentLink } from "./StudentLink";
 import { LEFT_LOOK, loadLogiMeta, logi, MEAL_LOOK, type KitchenDay, type LogiMeta, type MealDay, type Menu } from "./logiApi";
 import { StoreBoard } from "./Store";
 import { Avatar, Empty, Field, Glyph, hue, IconButton, Modal } from "./ui";
@@ -78,7 +79,7 @@ function KitchenToday({ schoolId }: { schoolId: string }) {
             {k.diets.map((d) => (
               <div key={d.id} className="diet-row" style={hue(d.allergies ? "red" : "amber")}>
                 <Avatar name={d.name} size={32} />
-                <span className="grow"><strong>{d.name}</strong><span className="muted small">{d.class_name}{d.boarder ? " · boarder" : " · day"}</span></span>
+                <span className="grow"><strong><StudentLink id={d.id} name={d.name} /></strong><span className="muted small">{d.class_name}{d.boarder ? " · boarder" : " · day"}</span></span>
                 <span className="diet-tags">{d.allergies && <span className="hue-chip" style={hue("red")}><Icon name="circle-x" size={12} />Allergic: {d.allergies}</span>}
                   {d.diet && <span className="hue-chip" style={hue("amber")}>{d.diet}</span>}</span>
               </div>

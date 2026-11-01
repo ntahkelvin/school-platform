@@ -4,6 +4,7 @@ import { useBusy } from "./GrowthBits";
 import { grow } from "./growthApi";
 import { StudentPicker, useOpsMeta } from "./Helpdesk";
 import Icon from "./Icon";
+import { StudentLink } from "./StudentLink";
 import { dayTime, fromLocalInput, INC_LOOK, INC_STATUS, localInput, ops, SEVERITY, type Incident, type StudentCard } from "./opsApi";
 import { Avatar, Empty, Field, Glyph, hue, Modal } from "./ui";
 
@@ -71,7 +72,7 @@ function IncidentView({ i: initial, staff, onClose, onChanged }: { i: Incident; 
         <span className="hue-chip" style={hue(INC_STATUS[i.status].hue)}>{INC_STATUS[i.status].label}</span>
         <span className="hue-chip" style={hue(i.parents_informed ? "green" : "slate")}><Icon name="phone" size={12} />{i.parents_informed ? "Parents told" : "Parents not told yet"}</span>
       </div>
-      {i.students.length > 0 && <div className="chips">{i.students.map((s) => <span key={s.id} className="who-inline chip"><Avatar name={s.name} size={20} />{s.name} · {s.class_name}</span>)}</div>}
+      {i.students.length > 0 && <div className="chips">{i.students.map((s) => <span key={s.id} className="who-inline chip"><Avatar name={s.name} size={20} /><StudentLink id={s.id} name={s.name} /> · {s.class_name}</span>)}</div>}
       {i.description && <div className="note-section"><h4>Account</h4><p>{i.description}</p></div>}
       {i.others && <p className="small"><b>Others:</b> {i.others}</p>}
       {i.action_taken && <div className="note-section"><h4>Action taken</h4><p>{i.action_taken}</p></div>}

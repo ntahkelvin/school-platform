@@ -11,6 +11,7 @@ from app.api.deps import current_user
 from app.api.people import find_or_create_user
 from app.core.db import get_db
 from app.models import (
+    StudentEvent,
     BoardingStatus, Branch, Gender, Membership, Role, SchoolClass, Student, StudentGuardian, StudentStatus, User,
 )
 
@@ -242,6 +243,8 @@ def add_student(
         boarding_status=data.boarding_status,
     )
     db.add(student)
+    db.flush()
+    db.add(StudentEvent(student_id=student.id, kind="admitted", text=f"Admitted{' into ' + db.get(SchoolClass, student.class_id).name if student.class_id else ''}", by_id=user.id))
     new_login = _link_guardian(db, student, branch, data.guardian) if data.guardian else None
     db.commit()
     db.refresh(student)
@@ -267,7 +270,20 @@ def update_student(
     s.admission_no = number
     s.first_name, s.middle_name, s.last_name = data.first_name.strip(), _clean(data.middle_name), data.last_name.strip()
     s.gender, s.date_of_birth, s.state_of_origin = data.gender, data.date_of_birth, _clean(data.state_of_origin)
+    events = []
+    if data.class_id != s.class_id:
+        old = s.school_class.name if s.school_class else "no class"
+        new = db.get(SchoolClass, data.class_id).name if data.class_id else "no class"
+        events.append(("class", f"Moved from {old} to {new}"))
+    if data.boarding_status != s.boarding_status:
+        events.append(("boarding", "Became a boarder" if data.boarding_status == BoardingStatus.boarder else "Became a day student"))
+    if data.status != s.status:
+        events.append(("status", {"active": "Back on the roll", "graduated": "Graduated", "withdrawn": "Left the school"}[data.status.value]))
+        if data.status != StudentStatus.active and not s.left_on:
+            s.left_on = date.today()
     s.class_id, s.boarding_status, s.status = data.class_id, data.boarding_status, data.status
+    for kind, text in events:
+        db.add(StudentEvent(student_id=s.id, kind=kind, text=text, by_id=user.id))
     db.commit()
     db.refresh(s)
     return _detail(db, s)

@@ -5,6 +5,7 @@ import { grow, type Card } from "./growthApi";
 import { InsightList, Spark, useBusy } from "./GrowthBits";
 import { StudentPicker } from "./Helpdesk";
 import Icon from "./Icon";
+import { StudentLink } from "./StudentLink";
 import { loadLogiMeta, logi, naira, type Fleet, type LogiMeta, type Register, type Route, type Stop, type Vehicle } from "./logiApi";
 import { dayTime, hhmm, type StudentCard } from "./opsApi";
 import { Avatar, Empty, Field, Glyph, hue, Modal } from "./ui";
@@ -338,7 +339,7 @@ function RidersForm({ schoolId, route, onClose, onDone }: { schoolId: string; ro
       <StudentPicker schoolId={schoolId} value={null} label="Add a student" onPick={(s) => s && !riders.some((r) => r.id === s.id) && setRiders([...riders, { ...s, stop: route.stops[0]?.name ?? null }])} />
       <ul className="rider-list">
         {riders.map((r) => (
-          <li key={r.id}><Avatar name={r.name} size={28} /><span className="grow"><strong>{r.name}</strong><span className="muted small">{r.class_name}</span></span>
+          <li key={r.id}><Avatar name={r.name} size={28} /><span className="grow"><strong><StudentLink id={r.id} name={r.name} /></strong><span className="muted small">{r.class_name}</span></span>
             <select value={r.stop ?? ""} aria-label="Stop" onChange={(e) => setRiders(riders.map((x) => (x.id === r.id ? { ...x, stop: e.target.value || null } : x)))}>
               <option value="">No stop</option>{route.stops.map((s) => <option key={s.name}>{s.name}</option>)}</select>
             <button className="chip-x" aria-label={`Remove ${r.name}`} onClick={() => setRiders(riders.filter((x) => x.id !== r.id))}><Icon name="close" size={14} /></button></li>

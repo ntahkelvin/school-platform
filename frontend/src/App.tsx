@@ -68,7 +68,8 @@ export default function App() {
     // Staff: their own portal; principals, vice principals and the IT team can also open their school's pages.
     if (route.page === "school" && runs.has(route.id)) return <SchoolPage key={route.id} {...common} schoolId={route.id} tab={route.tab} />;
     if (route.page === "register") return <RegisterPage key={`${route.kind}${route.id}${route.date}`} {...common} kind={route.kind} id={route.id} date={route.date} />;
-    if (route.page === "student" && runs.size) return <StudentPage key={route.id} {...common} studentId={route.id} />;
+    // Any member of staff can open a student's profile; the server shows only what their link to the student allows.
+    if (route.page === "student") return <StudentPage key={route.id} {...common} studentId={route.id} />;
     if (route.page === "board" && isBoard) return <BoardView {...common} />;
     if (route.page === "staff-record") return <StaffRecordPage key={route.id} {...common} schoolId={route.school} userId={route.id} />;
     if (route.page === "staff-cards") return <IdCardsPage key={`${route.school}${route.id}`} {...common} schoolId={route.school} userId={route.id} />;

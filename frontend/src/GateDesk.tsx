@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { InsightList, useBusy } from "./GrowthBits";
 import { StudentPicker, useOpsMeta } from "./Helpdesk";
 import Icon from "./Icon";
+import { StudentLink } from "./StudentLink";
 import { dayTime, fromLocalInput, hhmm, localInput, ops, PASS_STATUS, VISITOR_LOOK, type Gate, type Pass, type PassIn, type StudentCard, type Visitor, type VisitorIn } from "./opsApi";
 import { Avatar, Empty, Field, Glyph, hue, Modal } from "./ui";
 
@@ -93,7 +94,7 @@ export function PassCard({ p, onAct, big = false }: { p: Pass; onAct: (action: s
     <article className={`pass-card${p.late ? " late" : ""}${big ? " big" : ""}`} style={hue(p.late ? "red" : st.hue)}>
       <div className="pass-top">
         <Avatar name={p.student.name} size={big ? 52 : 40} />
-        <span className="pass-who"><strong>{p.student.name}</strong><span className="muted small">{p.student.class_name} · {p.student.admission_no}{p.student.boarder ? " · boarder" : ""}</span></span>
+        <span className="pass-who"><strong><StudentLink id={p.student.id} name={p.student.name} /></strong><span className="muted small">{p.student.class_name} · {p.student.admission_no}{p.student.boarder ? " · boarder" : ""}</span></span>
         <span className="pass-code" title="Pass code">{p.code}</span>
       </div>
       <div className="chips">
@@ -109,7 +110,7 @@ export function PassCard({ p, onAct, big = false }: { p: Pass; onAct: (action: s
       {(p.escort_name || p.guardians.length > 0) && (
         <p className="small escort"><Icon name="users" size={13} />
           {p.escort_name ? <>With {p.escort_name}{p.escort_relation && ` (${p.escort_relation})`}{p.escort_phone && ` · ${p.escort_phone}`}</> : "No escort named"}
-          {p.guardians.length > 0 && <span className="muted"> · On file: {p.guardians.map((g) => `${g.name} (${g.relation})`).join(", ")}</span>}
+          {p.guardians.length > 0 && <span className="muted"> · Allowed to collect: {p.guardians.map((g) => `${g.name} (${g.relation})`).join(", ")}</span>}
         </p>
       )}
       <p className="muted small">Asked by {p.requested_by}{p.approved_by && ` · approved by ${p.approved_by}`}{p.decision_note && ` · “${p.decision_note}”`}</p>
