@@ -167,7 +167,7 @@ def kitchen_day(school_id: uuid.UUID, on: date | None = Query(None, alias="date"
             diets.append({**student_card(db, s), "allergies": h.allergies, "diet": h.diet})
         diets.sort(key=lambda x: (not x["boarder"], x["name"]))
     db.commit()
-    return {"date": day.isoformat(), "count": hc, "meals": meals, "diets": diets, "can_edit": kitchen,
+    return {"date": day.isoformat(), "count": hc, "meals": meals, "diets": diets, "can_edit": on_desk(db, user, school, "kitchen", level="change"),
             "settings": {"meals": st.meals, "day_students_lunch": st.day_students_lunch, "staff_meals": st.staff_meals},
             "insights": kitchen_insights(db, school_id) if kitchen and day == now_wat().date() else []}
 
@@ -213,7 +213,7 @@ def menu(school_id: uuid.UUID, week: date | None = None, user: User = Depends(cu
     rows = db.scalars(select(MealPlan).where(MealPlan.school_id == school_id, MealPlan.on_date >= mon, MealPlan.on_date < mon + timedelta(days=7)))
     st = kitchen_settings(db, school_id)
     db.commit()
-    return {"week": mon.isoformat(), "meals": st.meals, "can_edit": on_desk(db, user, school, "kitchen"),
+    return {"week": mon.isoformat(), "meals": st.meals, "can_edit": on_desk(db, user, school, "kitchen", level="change"),
             "plan": [{"on_date": p.on_date.isoformat(), "meal": p.meal, "dishes": p.dishes, "notes": p.notes} for p in rows]}
 
 
@@ -550,8 +550,10 @@ def vehicle_out(db: Session, v: Vehicle, school_id: uuid.UUID, today: date) -> d
     serv_m = sum(s.cost or 0 for s in db.scalars(select(VehicleService).where(VehicleService.vehicle_id == v.id, VehicleService.on_date >= month)))
     open_trip = db.scalar(select(Trip).where(Trip.vehicle_id == v.id, Trip.ended_at.is_(None)).order_by(Trip.started_at.desc()))
     since_service = (v.odometer_km - v.last_service_km) if v.odometer_km is not None and v.last_service_km is not None else None
+    driver = db.get(User, v.driver_user_id) if v.driver_user_id else None
     return {"id": str(v.id), "name": v.name, "kind": v.kind.value, "plate_number": v.plate_number, "capacity": v.capacity,
-            "driver_name": v.driver_name, "driver_phone": v.driver_phone, "odometer_km": v.odometer_km, "papers": papers,
+            "driver_name": driver.full_name if driver else v.driver_name, "driver_phone": v.driver_phone or (driver.phone if driver else None),
+            "driver_user_id": str(v.driver_user_id) if v.driver_user_id else None, "odometer_km": v.odometer_km, "papers": papers,
             "service_every_km": v.service_every_km, "last_service_km": v.last_service_km, "since_service_km": since_service,
             "service_due": bool(since_service is not None and v.service_every_km and since_service >= v.service_every_km * 0.9),
             "check": {"all_ok": check.all_ok, "items": check.items, "notes": check.notes} if check else None,
@@ -936,3 +938,160 @@ def logistics_overview(school_id: uuid.UUID, user: User = Depends(current_user),
             "fleet": {"vehicles": len(fl["vehicles"]), "checked": sum(1 for v in fl["vehicles"] if v["check"]),
                       "out": sum(1 for v in fl["vehicles"] if v["open_trip"]), "fuel_month": sum(v["fuel_month"] for v in fl["vehicles"])},
             "insights": k["insights"] + main["insights"] + food["insights"] + fl["insights"]}
+
+
+def desk_summary(db: Session, user: User, school: School, desk: str) -> dict | None:
+    """The headline for a desk card on the staff page, the same numbers the managers see."""
+    try:
+        if desk == "kitchen":
+            k = kitchen_day(school.id, None, user, db)
+            if not k["meals"]:
+                return None
+            hour = now_wat().hour
+            order = [m for m in k["meals"] if m["meal"] in ("breakfast", "lunch", "supper")]
+            pick = next((m for m in order if (m["meal"] == "breakfast" and hour < 9) or (m["meal"] == "lunch" and hour < 14)
+                         or m["meal"] == "supper"), k["meals"][-1])
+            return {"big": str(pick["cook_for"]), "line": f"plates to cook for {pick['label'].lower()}",
+                    "more": pick["dishes"] or "Nothing on the menu yet", "alerts": len(k["insights"])}
+        if desk == "transport":
+            fl = fleet(school.id, user, db)
+            n = len(fl["vehicles"])
+            checked = sum(1 for v in fl["vehicles"] if v["check"])
+            out = sum(1 for v in fl["vehicles"] if v["open_trip"])
+            return {"big": f"{checked}/{n}", "line": "vehicles checked today", "more": f"{out} out on a trip" if out else "All vehicles in school",
+                    "alerts": sum(1 for i in fl["insights"] if i["kind"] == "alert")}
+        if desk == "store":
+            st = list_stock(school.id, "main", user, db)
+            low = sum(1 for i in st["items"] if i["status"] != "ok")
+            return {"big": str(low), "line": f"item{'s' if low != 1 else ''} running low", "more": f"{len(st['items'])} items, worth {naira(st['value'])}",
+                    "alerts": low}
+    except HTTPException:
+        return None
+    return None
+
+
+def naira(n: float) -> str:
+    return f"\u20a6{round(n):,}"
+
+
+# ---------- Facilities, linked to operations ----------
+
+FACILITY_DESK = {"kitchen": "kitchen", "dining_hall": "kitchen", "store": "store", "sick_bay": "sickbay"}
+
+
+@router.get("/schools/{school_id}/facilities/live")
+def facilities_live(school_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """What is happening in each facility and vehicle: open jobs, repairs, and the work of the desk that runs it."""
+    from app.models import Bed, Facility, Hostel, HostelRoom
+    school = school_for(db, user, school_id, manage=True)
+    today = now_wat().date()
+    since = datetime.now(timezone.utc) - timedelta(days=90)
+    facs = list(db.scalars(select(Facility).join(Branch, Branch.id == Facility.branch_id).where(Branch.school_id == school_id)))
+    jobs = defaultdict(lambda: {"open": 0, "done_90": 0, "cost_90": 0.0})
+    for t in db.scalars(select(Ticket).where(Ticket.school_id == school_id, Ticket.facility_id.is_not(None))):
+        j = jobs[t.facility_id]
+        if t.status not in ("done", "closed"):
+            j["open"] += 1
+        elif t.done_at and t.done_at >= since:
+            j["done_90"] += 1
+            j["cost_90"] += t.cost or 0
+    desk_line: dict[str, dict | None] = {}
+    for d in ("kitchen", "store"):
+        desk_line[d] = desk_summary(db, user, school, d)
+    seen = db.scalar(select(func.count()).select_from(ClinicVisit).where(
+        ClinicVisit.school_id == school_id, ClinicVisit.seen_at >= datetime.combine(today, time(0), tzinfo=WAT))) or 0
+    desk_line["sickbay"] = {"big": str(seen), "line": f"sick bay visit{'s' if seen != 1 else ''} today", "more": "", "alerts": 0}
+    out = {}
+    for f in facs:
+        d = FACILITY_DESK.get(f.kind.value)
+        out[str(f.id)] = {**jobs[f.id], "desk": d, "live": desk_line.get(d) if d else None}
+    hostels = {}
+    for h in db.scalars(select(Hostel).join(Branch, Branch.id == Hostel.branch_id).where(Branch.school_id == school_id)):
+        beds = list(db.scalars(select(Bed).join(HostelRoom, HostelRoom.id == Bed.room_id).where(HostelRoom.hostel_id == h.id)))
+        hostels[str(h.id)] = {"beds": len(beds), "taken": sum(1 for b in beds if b.student_id)}
+    vehicles = {}
+    for v in school_vehicles(db, school_id):
+        vo = vehicle_out(db, v, school_id, today)
+        bad = [p["label"] for p in vo["papers"].values() if p["days"] is not None and p["days"] < 0]
+        soon = [p["label"] for p in vo["papers"].values() if p["days"] is not None and 0 <= p["days"] <= 30]
+        vehicles[str(v.id)] = {"expired": bad, "soon": soon, "missing": sum(1 for p in vo["papers"].values() if p["date"] is None),
+                               "checked": vo["check"] is not None, "check_ok": vo["check"]["all_ok"] if vo["check"] else None,
+                               "service_due": vo["service_due"], "out": bool(vo["open_trip"]), "odometer_km": vo["odometer_km"]}
+    db.commit()
+    return {"facilities": out, "hostels": hostels, "vehicles": vehicles}
+
+
+@router.get("/facilities/{fid}/history")
+def facility_history(fid: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from app.models import Facility
+    f = db.get(Facility, fid)
+    if not f:
+        raise not_found("Facility")
+    school_id = f.branch.school_id if hasattr(f, "branch") and f.branch else db.get(Branch, f.branch_id).school_id
+    school_for(db, user, school_id, manage=True)
+    nm = Names(db, school_id)
+    rows = list(db.scalars(select(Ticket).where(Ticket.facility_id == fid).order_by(Ticket.created_at.desc()).limit(100)))
+    return {"facility": {"id": str(f.id), "name": f.name, "kind": f.kind.value},
+            "jobs": [{"id": str(t.id), "number": t.number, "title": t.title, "status": t.status, "desk": t.desk,
+                      "created_at": t.created_at.isoformat(), "done_at": t.done_at.isoformat() if t.done_at else None,
+                      "cost": t.cost, "by": nm.name(t.raised_by_id), "fixed_by": nm.name(t.assigned_to_id), "rating": t.rating} for t in rows],
+            "spent": sum(t.cost or 0 for t in rows)}
+
+
+@router.get("/schools/{school_id}/ops-setup")
+def ops_setup(school_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Step-by-step list to get operations working, ticked off from what is already in place."""
+    from app.api.ops import DESKS, ensure_desks
+    from app.models import Bed, DeskMember, Facility, MedicineStock
+    school = school_for(db, user, school_id, manage=True)
+    ensure_desks(db, school_id)
+    boarding = school.has_boarding if hasattr(school, "has_boarding") else True
+    members = defaultdict(int)
+    for r in db.scalars(select(DeskMember).where(DeskMember.school_id == school_id, DeskMember.removed.is_(False))):
+        members[r.desk] += 1
+    empty = [DESKS[d]["label"] for d in DESKS if not members[d]]
+    kinds = {f.kind.value for f in db.scalars(select(Facility).join(Branch, Branch.id == Facility.branch_id).where(Branch.school_id == school_id))}
+    want = ["kitchen", "store", "sick_bay"] if boarding else ["store", "sick_bay"]
+    missing_f = [k.replace("_", " ") for k in want if k not in kinds]
+    vs = school_vehicles(db, school_id)
+    no_papers = [v.name for v in vs if not (v.insurance_expiry and v.roadworthiness_expiry and v.licence_expiry)]
+    no_driver = [v.name for v in vs if not v.driver_user_id]
+    routes = list(db.scalars(select(BusRoute).where(BusRoute.school_id == school_id)))
+    riders = db.scalar(select(func.count()).select_from(RouteRider).join(BusRoute, BusRoute.id == RouteRider.route_id).where(BusRoute.school_id == school_id)) or 0
+    mon = now_wat().date() - timedelta(days=now_wat().date().weekday())
+    planned = db.scalar(select(func.count()).select_from(MealPlan).where(MealPlan.school_id == school_id, MealPlan.on_date >= mon,
+                                                                       MealPlan.on_date < mon + timedelta(days=7))) or 0
+    k_set = db.scalar(select(KitchenSettings.id).where(KitchenSettings.school_id == school_id))
+    main_items = db.scalar(select(func.count()).select_from(StockItem).where(StockItem.school_id == school_id, StockItem.store == "main", StockItem.active.is_(True))) or 0
+    food_items = db.scalar(select(func.count()).select_from(StockItem).where(StockItem.school_id == school_id, StockItem.store == "kitchen", StockItem.active.is_(True))) or 0
+    meds = db.scalar(select(func.count()).select_from(MedicineStock).where(MedicineStock.school_id == school_id)) or 0
+    health = db.scalar(select(func.count()).select_from(StudentHealth).join(Student, Student.id == StudentHealth.student_id).where(Student.school_id == school_id)) or 0
+    db.commit()
+    steps = [
+        {"key": "teams", "label": "Put people on each team", "icon": "users", "done": not empty,
+         "detail": "Every team has people" if not empty else f"Nobody yet on: {', '.join(empty)}",
+         "hint": "Staff join their team by job title (Cook, Driver, Nurse, Security…). Add anyone else by hand.", "go": "teams"},
+        {"key": "facilities", "label": "Add the kitchen, store and sick bay", "icon": "facilities", "done": not missing_f,
+         "detail": "All added" if not missing_f else f"Not in Facilities yet: {', '.join(missing_f)}",
+         "hint": "Facilities → Add facility. Their jobs and repairs then show on each one.", "tab": "facilities"},
+        {"key": "vehicles", "label": "Vehicles and their papers", "icon": "bus", "done": bool(vs) and not no_papers, "optional": not vs,
+         "detail": "No vehicles. Skip this if the school has none." if not vs else ("All papers recorded" if not no_papers else f"Papers missing for {', '.join(no_papers)}"),
+         "hint": "Add vehicles in Facilities, then press Papers on each one in Transport.", "go": "transport"},
+        {"key": "drivers", "label": "Link each vehicle to its driver", "icon": "user", "done": bool(vs) and not no_driver, "optional": not vs,
+         "detail": "Every vehicle has a driver" if vs and not no_driver else (f"No driver on the staff for {', '.join(no_driver)}" if vs else "No vehicles"),
+         "hint": "Facilities → Vehicles → Edit → Driver. The driver then sees the vehicle on their page.", "tab": "facilities"},
+        {"key": "routes", "label": "Bus routes and who rides", "icon": "map", "done": bool(routes) and riders > 0, "optional": not vs,
+         "detail": f"{len(routes)} route{'s' if len(routes) != 1 else ''}, {riders} riders" if routes else "No routes yet",
+         "hint": "Transport → Bus routes → New route, then add the students on it.", "go": "transport"},
+        {"key": "kitchen", "label": "Kitchen meals and this week's menu", "icon": "cooking-pot", "done": bool(k_set) and planned > 0, "optional": not boarding,
+         "detail": f"{planned} meals planned this week" if planned else "This week's menu is empty",
+         "hint": "Kitchen → Meals and numbers, then Kitchen → Menu.", "go": "kitchen"},
+        {"key": "stock", "label": "What is in the store now", "icon": "store", "done": main_items > 0 and (food_items > 0 or not boarding),
+         "detail": f"Store: {main_items} items · food store: {food_items} items",
+         "hint": "Store → New item, with how many you have today. Do the same in Kitchen → Food store.", "go": "store"},
+        {"key": "sickbay", "label": "Medicine stock and health records", "icon": "stethoscope", "done": meds > 0 and health > 0,
+         "detail": f"{meds} medicines · {health} health records",
+         "hint": "The nurse adds medicines in Sick bay → Medicine stock, and health records from each student.", "go": "sickbay"},
+    ]
+    needed = [s for s in steps if not s.get("optional")]
+    return {"steps": steps, "done": sum(1 for s in needed if s["done"]), "total": len(needed)}

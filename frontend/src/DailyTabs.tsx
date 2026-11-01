@@ -12,6 +12,7 @@ import StudentForm from "./StudentForm";
 import { Avatar, Empty, Field, Glyph, hue, IconButton, Modal, NewLoginNotice, nicePhone, Stat } from "./ui";
 import Icon from "./Icon";
 import { departmentLook, ROLE_HUE, STAGE_LOOK, stageOf } from "./look";
+import { useRoleTools } from "./rightsApi";
 
 const stageHue = (level: string) => STAGE_LOOK[stageOf(level)].hue;
 const levelOfName = (name: string) => name.replace(/\s*[A-Za-z]+$/, "").trim() || name;
@@ -484,7 +485,8 @@ function guessRole(job: string, teaching: boolean): StaffRole {
   const j = job.toLowerCase();
   if (/vice ?principal|deputy ?(principal|head)/.test(j)) return "vice_principal";
   if (/\bict officer|\bit (officer|admin|manager)|systems? admin/.test(j)) return "it_admin";
-  if (!/vice|deputy/.test(j) && /principal|head ?teacher|head ?master|head ?mistress|rector/.test(j)) return "head";
+  if (!/vice|deputy/.test(j) && /\bpresident\b|head of (the )?school|\brector\b/.test(j)) return "head_of_school";
+  if (!/vice|deputy/.test(j) && /principal|head ?teacher|head ?master|head ?mistress/.test(j)) return "head";
   if (/bursar|accountant|cashier/.test(j)) return "bursar";
   if (/boarding|house ?master|house ?mistress|matron|house ?parent|hostel/.test(j)) return "house_parent";
   return teaching ? "teacher" : "support";
@@ -505,6 +507,7 @@ export function StaffForm({
   onCancel: () => void;
   onRemoveRole: (membershipId: string) => Promise<void>;
 }) {
+  const roleTools = useRoleTools();
   const [v, setV] = useState({
     title: person?.title ?? "", full_name: person?.full_name ?? "", gender: person?.gender ?? "",
     phone: "", email: "", job_title: person?.job_title ?? jobTitle ?? "", department_id: person?.department_id ?? "",
@@ -556,10 +559,10 @@ export function StaffForm({
             <div className="chips" style={{ marginTop: 6 }}>
               {person.roles.map((r) => (
                 <span key={r.membership_id} className="hue-chip role" style={hue(ROLE_HUE[r.role] ?? "slate")}>
-                  {ROLE_LABEL[r.role]}
-                  <button type="button" className="chip-x" aria-label={`Remove ${ROLE_LABEL[r.role]} role`} onClick={() => {
+                  {roleTools.label(r.role, ROLE_LABEL[r.role])}
+                  {roleTools.may(r.role) && <button type="button" className="chip-x" aria-label={`Remove ${ROLE_LABEL[r.role]} role`} onClick={() => {
                     if (window.confirm(`Remove ${person.full_name} as ${ROLE_LABEL[r.role]}?`)) onRemoveRole(r.membership_id).catch((err) => setError(errorText(err)));
-                  }}><Icon name="close" size={12} stroke={2.4} /></button>
+                  }}><Icon name="close" size={12} stroke={2.4} /></button>}
                 </span>
               ))}
             </div>
@@ -597,8 +600,8 @@ export function StaffForm({
         <Field label={person ? "Give another role (optional)" : "App access"} hint={person ? undefined : "What they can do in the app. Worked out from the position."}>
           <select value={role} onChange={(e) => { setRole(e.target.value as StaffRole | ""); setRoleTouched(true); }}>
             {person && <option value="">No new role</option>}
-            {(Object.keys(ROLE_LABEL) as StaffRole[]).filter((r) => !person?.roles.some((x) => x.role === r)).map((r) => (
-              <option key={r} value={r}>{ROLE_LABEL[r]}</option>
+            {(Object.keys(ROLE_LABEL) as StaffRole[]).filter((r) => !person?.roles.some((x) => x.role === r) && roleTools.may(r)).map((r) => (
+              <option key={r} value={r}>{roleTools.label(r, ROLE_LABEL[r])}</option>
             ))}
           </select>
         </Field>

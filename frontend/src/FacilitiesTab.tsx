@@ -20,8 +20,24 @@ type Totals = {
   facilities: number; places: number; hostels: number; rooms: number; beds: number; taken: number; vehicles: number; seats: number;
 };
 
+interface Live {
+  facilities: Record<string, { open: number; done_90: number; cost_90: number; desk: string | null; live: { big: string; line: string; more: string; alerts: number } | null }>;
+  vehicles: Record<string, { expired: string[]; soon: string[]; missing: number; checked: boolean; check_ok: boolean | null; service_due: boolean; out: boolean }>;
+}
+const DESK_SEG: Record<string, [string, string]> = { kitchen: ["kitchen", "Open the kitchen"], store: ["store", "Open the store"], sickbay: ["sickbay", "Open the sick bay"] };
+
+/** Opens a part of the Operations page. */
+export function openOps(schoolId: string, seg: string): void {
+  try { sessionStorage.setItem("ops-seg", seg); } catch { /* private mode */ }
+  window.location.hash = `#/school/${schoolId}/operations`;
+}
+
 export default function FacilitiesTab({ branch }: { branch: BranchDetail }) {
   const [people, setPeople] = useState<PersonOption[]>([]);
+  const [live, setLive] = useState<Live | null>(null);
+  const [history, setHistory] = useState<Item | null>(null);
+  const loadLive = useCallback(() => { api.raw<Live>("GET", `/api/schools/${branch.school_id}/facilities/live`).then(setLive).catch(() => {}); }, [branch.school_id]);
+  useEffect(loadLive, [loadLive]);
   const [departments, setDepartments] = useState<Item[]>([]);
   const [t, setT] = useState<Totals>({ facilities: 0, places: 0, hostels: 0, rooms: 0, beds: 0, taken: 0, vehicles: 0, seats: 0 });
   const facilityApi = useMemo(() => records("branch", branch.id, "facilities"), [branch.id]);
@@ -65,11 +81,22 @@ export default function FacilitiesTab({ branch }: { branch: BranchDetail }) {
         summary={(f) => {
           const kind = FACILITY_KIND[f.kind as keyof typeof FACILITY_KIND];
           const dept = f.department_name && !sameIdea(String(f.department_name), String(f.name), kind) ? String(f.department_name) : null;
+          const l = live?.facilities[f.id];
+          const seg = l?.desk ? DESK_SEG[l.desk] : null;
           return (
             <>
               <strong>{String(f.name)}</strong>
               <span className="muted small block">{[kind, dept, f.in_charge_name ? `In charge: ${f.in_charge_name}` : null].filter(Boolean).join(" · ")}</span>
-              {f.capacity ? <span className="mini-pill"><Icon name="users" size={12} stroke={2.2} />Holds {String(f.capacity)}</span> : null}
+              <span className="pill-row">
+                {f.capacity ? <span className="mini-pill"><Icon name="users" size={12} stroke={2.2} />Holds {String(f.capacity)}</span> : null}
+                {l && l.open > 0 && <span className="mini-pill" style={hue("orange")}><Icon name="wrench" size={12} />{l.open} open job{l.open > 1 ? "s" : ""}</span>}
+                {l && (l.done_90 > 0 || l.open > 0) && <button className="mini-pill as-link" onClick={() => setHistory(f)}><Icon name="history" size={12} />{l.done_90} repair{l.done_90 === 1 ? "" : "s"} in 90 days{l.cost_90 ? ` · \u20a6${Math.round(l.cost_90).toLocaleString()}` : ""}</button>}
+              </span>
+              {l?.live && seg && (
+                <button className="live-line" style={hue(l.desk === "kitchen" ? "lime" : l.desk === "store" ? "amber" : "rose")} onClick={() => openOps(branch.school_id, seg[0])}>
+                  <b>{l.live.big}</b><span>{l.live.line}</span><Icon name="chevron-right" size={14} />
+                </button>
+              )}
             </>
           );
         }}
@@ -92,7 +119,8 @@ export default function FacilitiesTab({ branch }: { branch: BranchDetail }) {
           { key: "kind", label: "Type", type: "select", required: true, options: optionsOf(VEHICLE_KIND), defaultValue: "bus" },
           { key: "plate_number", label: "Plate number (optional)" },
           { key: "capacity", label: "Seats (optional)", type: "number" },
-          { key: "driver_name", label: "Driver's name (optional)" },
+          { key: "driver_user_id", label: "Driver (on the staff)", type: "person", hint: "They will see this vehicle and its daily check on their page." },
+          { key: "driver_name", label: "Or the driver's name, if not on the staff" },
           { key: "driver_phone", label: "Driver's phone (optional)" },
           { key: "route", label: "Route (optional)", type: "textarea", placeholder: "e.g. Okija junction, Ihiala, Uli" },
         ]}
@@ -105,7 +133,10 @@ export default function FacilitiesTab({ branch }: { branch: BranchDetail }) {
             <span className="muted small block">
               {[VEHICLE_KIND[v.kind as keyof typeof VEHICLE_KIND], v.capacity ? `${v.capacity} seats` : null].filter(Boolean).join(" · ")}
             </span>
-            {v.driver_name ? (
+            <VehicleStatus v={live?.vehicles[v.id]} onOpen={() => openOps(branch.school_id, "transport")} />
+            {v.driver_user_id ? (
+              <span className="small block driver"><Icon name="user" size={13} />{people.find((p) => p.id === v.driver_user_id)?.full_name ?? "Driver"}</span>
+            ) : v.driver_name ? (
               <span className="small block driver"><Icon name="user" size={13} />{String(v.driver_name)}
                 {v.driver_phone ? <a href={`tel:${String(v.driver_phone).replace(/[^\d+]/g, "")}`}>{String(v.driver_phone)}</a> : null}
               </span>
@@ -113,8 +144,49 @@ export default function FacilitiesTab({ branch }: { branch: BranchDetail }) {
           </>
         )}
         emptyText="No vehicles yet."
+        onChanged={loadLive}
       />
+      {history && <FacilityHistory facility={history} onClose={() => setHistory(null)} />}
     </div>
+  );
+}
+
+function VehicleStatus({ v, onOpen }: { v?: Live["vehicles"][string]; onOpen: () => void }) {
+  if (!v) return null;
+  return (
+    <span className="pill-row">
+      {v.expired.map((p) => <span key={p} className="mini-pill" style={hue("red")}><Icon name="circle-x" size={12} />{p} expired</span>)}
+      {v.soon.map((p) => <span key={p} className="mini-pill" style={hue("amber")}><Icon name="calendar" size={12} />{p} ends soon</span>)}
+      {v.missing > 0 && <span className="mini-pill" style={hue("slate")}><Icon name="file" size={12} />{v.missing} paper{v.missing > 1 ? "s" : ""} not recorded</span>}
+      <span className="mini-pill" style={hue(!v.checked ? "slate" : v.check_ok ? "green" : "red")}><Icon name={v.checked ? (v.check_ok ? "circle-check" : "circle-x") : "hourglass"} size={12} />{!v.checked ? "Not checked today" : v.check_ok ? "Checked today" : "Check failed"}</span>
+      {v.out && <span className="mini-pill" style={hue("violet")}><Icon name="log-out" size={12} />Out on a trip</span>}
+      {v.service_due && <span className="mini-pill" style={hue("orange")}><Icon name="wrench" size={12} />Service due</span>}
+      <button className="mini-pill as-link" onClick={onOpen}>Transport<Icon name="chevron-right" size={12} /></button>
+    </span>
+  );
+}
+
+function FacilityHistory({ facility, onClose }: { facility: Item; onClose: () => void }) {
+  const [h, setH] = useState<{ jobs: { id: string; number: number; title: string; status: string; created_at: string; done_at: string | null; cost: number | null; by: string | null; fixed_by: string | null; rating: number | null }[]; spent: number } | null>(null);
+  useEffect(() => { api.raw<typeof h>("GET", `/api/facilities/${facility.id}/history`).then(setH).catch(() => {}); }, [facility.id]);
+  return (
+    <Modal title={`${String(facility.name)}: jobs and repairs`} onClose={onClose}>
+      {!h ? <p className="muted">Loading…</p> : h.jobs.length === 0 ? <Empty icon="wrench">No jobs for this place yet.</Empty> : (
+        <>
+          <p className="muted small">{h.jobs.length} jobs{h.spent ? `, \u20a6${Math.round(h.spent).toLocaleString()} spent on parts` : ""}.</p>
+          <ul className="fac-jobs">
+            {h.jobs.map((j) => (
+              <li key={j.id} className={j.status === "done" || j.status === "closed" ? "done" : ""}>
+                <span className="job-no">#{j.number}</span>
+                <span className="grow"><strong>{j.title}</strong>
+                  <small className="block muted">{new Date(j.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}{j.by && ` · reported by ${j.by}`}{j.fixed_by && ` · ${j.fixed_by}`}{j.cost ? ` · \u20a6${Math.round(j.cost).toLocaleString()}` : ""}{j.rating ? ` · ${"\u2605".repeat(j.rating)}` : ""}</small></span>
+                <span className="hue-chip" style={hue(j.status === "done" || j.status === "closed" ? "green" : "orange")}>{j.status}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </Modal>
   );
 }
 

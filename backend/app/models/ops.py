@@ -19,6 +19,8 @@ class DeskMember(IdMixin, TimestampMixin, Base):
     desk: Mapped[str] = mapped_column(String(20))
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     lead: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Taken off the desk by a manager: kept so the automatic matching by job title doesn't put them back.
+    removed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
 
 class Ticket(IdMixin, TimestampMixin, Base):

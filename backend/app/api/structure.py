@@ -113,7 +113,7 @@ def staff_options(school_id: uuid.UUID, user: User = Depends(current_user), db: 
     school = owned_school(db, user, school_id)
     rows = db.scalars(select(Membership).where(
         Membership.group_id == school.group_id,
-        Membership.role.in_([Role.owner, Role.head, Role.vice_principal, Role.it_admin, Role.bursar, Role.teacher, Role.house_parent, Role.support]),
+        Membership.role.in_([Role.owner, Role.head_of_school, Role.head, Role.vice_principal, Role.it_admin, Role.bursar, Role.teacher, Role.house_parent, Role.support]),
         (Membership.school_id == school.id) | (Membership.role == Role.owner),
     )).all()
     people: dict[uuid.UUID, PersonOption] = {}
@@ -654,6 +654,7 @@ class VehicleIn(In):
     capacity: int | None = Field(default=None, ge=1, le=200)
     driver_name: str | None = Field(default=None, max_length=100)
     driver_phone: str | None = Field(default=None, max_length=30)
+    driver_user_id: uuid.UUID | None = None
     route: str | None = Field(default=None, max_length=500)
 
     @field_validator("plate_number")
@@ -669,6 +670,7 @@ class VehicleOut(Out):
     capacity: int | None
     driver_name: str | None
     driver_phone: str | None
+    driver_user_id: uuid.UUID | None = None
     route: str | None
 
 

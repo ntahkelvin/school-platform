@@ -14,11 +14,11 @@ from app.models import Branch, Department, EmploymentType, Gender, Membership, R
 
 router = APIRouter(prefix="/api", tags=["staff"])
 
-STAFF_ROLES = [Role.head, Role.vice_principal, Role.it_admin, Role.bursar, Role.teacher, Role.house_parent, Role.support]
+STAFF_ROLES = [Role.head_of_school, Role.head, Role.vice_principal, Role.it_admin, Role.bursar, Role.teacher, Role.house_parent, Role.support]
 
 # Positions most Nigerian secondary schools fill. Shown on the Staff page as "key positions".
 KEY_POSITIONS = [
-    "Principal", "Vice Principal (Academics)", "Vice Principal (Administration)", "Chaplain", "Bursar",
+    "Head of School", "Principal", "Vice Principal (Academics)", "Vice Principal (Administration)", "Chaplain", "Bursar",
     "Dean of Studies", "Examinations Officer", "Registrar", "Guidance Counsellor", "Boarding Master",
     "Boarding Mistress", "Librarian", "School Nurse", "Sports Master", "ICT Officer", "Head of Security",
 ]
@@ -145,6 +145,14 @@ def save_profile(db: Session, school_id: uuid.UUID, user_id: uuid.UUID, data: Pr
     return p
 
 
+def guard_rank(user: User, branch: Branch, role: Role) -> None:
+    """Only someone above a role may give it or take it away (so nobody can make themselves principal)."""
+    from app.api.rights import rank_of
+    from app.core.rights import RANK
+    if rank_of(user, branch.school) <= RANK.get(role.value, 0):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only someone above this role can give it or take it away")
+
+
 def add_staff_role(db: Session, branch: Branch, person: User, role: Role) -> bool:
     """Gives a person a staff role at a branch. Returns False if they already had it."""
     exists = db.scalar(select(Membership).where(
@@ -172,6 +180,7 @@ def add_staff(branch_id: uuid.UUID, data: StaffIn, user: User = Depends(current_
     branch = owned_branch(db, user, branch_id)
     if data.role not in STAFF_ROLES:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose a staff role")
+    guard_rank(user, branch, data.role)
     person, password = find_or_create_user(db, data.full_name, data.phone, data.email)
     if not add_staff_role(db, branch, person, data.role):
         raise HTTPException(status.HTTP_409_CONFLICT, f"{person.full_name} already has that role here")
@@ -199,7 +208,8 @@ def remove_staff_role(membership_id: uuid.UUID, user: User = Depends(current_use
     m = db.get(Membership, membership_id)
     if not m or m.role not in STAFF_ROLES or not m.branch_id:
         raise not_found("Staff role")
-    owned_branch(db, user, m.branch_id)
+    branch = owned_branch(db, user, m.branch_id)
+    guard_rank(user, branch, m.role)
     db.delete(m)
     db.commit()
     return Response(status_code=204)

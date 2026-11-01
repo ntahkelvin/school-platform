@@ -51,8 +51,16 @@ export function MyDeskCards({ schoolId }: { schoolId: string }) {
       {m.desks.map((d) => (
         <section key={d.key} className="card editor portal-card desk-portal" style={hue(d.hue)}>
           <div className="card-head"><h2 className="with-glyph"><Glyph icon={d.icon} hue={d.hue} size={34} />{d.label}</h2></div>
-          <p className="desk-big"><b>{d.key === "gate" || d.key === "sickbay" ? "" : d.open}</b>
-            {d.key === "gate" ? "Visitors' book and exit passes" : d.key === "sickbay" ? "Visits, students lying in and medicine stock" : `open job${d.open === 1 ? "" : "s"} for your team`}</p>
+          {d.info ? (
+            <>
+              <p className="desk-big"><b>{d.info.big}</b>{d.info.line}</p>
+              <p className="small desk-more">{d.info.more}</p>
+              {d.info.alerts > 0 && <p className="small desk-alert"><Icon name="sparkle" size={13} />{d.info.alerts} thing{d.info.alerts > 1 ? "s" : ""} to look at</p>}
+              {d.open > 0 && !["gate", "sickbay"].includes(d.key) && <p className="small">{d.open} open job{d.open > 1 ? "s" : ""} for your team</p>}
+            </>
+          ) : (
+            <p className="desk-big"><b>{d.open}</b>open job{d.open === 1 ? "" : "s"} for your team</p>
+          )}
           {m.assigned > 0 && !["gate", "sickbay"].includes(d.key) && <p className="small">{m.assigned} given to you</p>}
           <a className="button primary-link" href={href({ page: "desk", school: schoolId, desk: d.key })}><Icon name={d.icon} size={16} />Open the {d.key === "sickbay" ? "sick bay" : d.key === "gate" ? "gate desk" : "desk"}</a>
         </section>

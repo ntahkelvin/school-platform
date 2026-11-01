@@ -51,8 +51,8 @@ function KitchenToday({ schoolId }: { schoolId: string }) {
       </div>
       <div className="headcount">
         <span style={hue("indigo")}><b>{k.count.boarders}</b>boarders</span>
-        <span style={hue("violet")}><b>−{k.count.boarders_out}</b>out of school</span>
-        <span style={hue("rose")}><b>−{k.count.sick_bay}</b>in the sick bay</span>
+        {k.count.boarders_out > 0 && <span style={hue("violet")}><b>−{k.count.boarders_out}</b>out of school</span>}
+        {k.count.sick_bay > 0 && <span style={hue("rose")}><b>−{k.count.sick_bay}</b>in the sick bay</span>}
         <span style={hue("green")} className="hc-total"><b>{k.count.dining_boarders}</b>boarders eating</span>
         <span style={hue("sky")}><b>{k.count.day_present}</b>day students<small>{k.count.day_source}</small></span>
       </div>

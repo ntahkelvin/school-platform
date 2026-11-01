@@ -264,8 +264,8 @@ class OrganisationSummary(BaseModel):
     totals: dict[str, int]
 
 
-STAFF_ROLES = [Role.head, Role.vice_principal, Role.it_admin, Role.bursar, Role.teacher, Role.house_parent, Role.support]
-ROLE_LABEL = {Role.vice_principal: "Vice principals", Role.it_admin: "IT team", Role.head: "Heads", Role.bursar: "Bursars", Role.teacher: "Teachers", Role.house_parent: "House parents", Role.support: "Support staff"}
+STAFF_ROLES = [Role.head_of_school, Role.head, Role.vice_principal, Role.it_admin, Role.bursar, Role.teacher, Role.house_parent, Role.support]
+ROLE_LABEL = {Role.head_of_school: "Heads of school", Role.vice_principal: "Vice principals", Role.it_admin: "IT team", Role.head: "Heads", Role.bursar: "Bursars", Role.teacher: "Teachers", Role.house_parent: "House parents", Role.support: "Support staff"}
 
 
 def _school_summary(db: Session, school: School, include_boards: bool) -> SchoolSummary:

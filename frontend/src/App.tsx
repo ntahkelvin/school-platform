@@ -16,6 +16,7 @@ import PassportPage from "./Passport";
 import { DeskPage } from "./Operations";
 import { go, useRoute, type BranchTab } from "./router";
 import { cache, isNetworkError } from "./offline";
+import { MeContext, opensSchool, stopSeeAs } from "./rightsApi";
 
 export default function App() {
   const [me, setMe] = useState<Me | null>(null);
@@ -50,16 +51,18 @@ export default function App() {
   if (checking) return <div className="center muted">Loading…</div>;
   if (!me) return <Login onLoggedIn={setMe} />;
 
-  if (me.must_change_password)
+  if (me.must_change_password && !me.acting)
     return <ChoosePassword me={me} onLogout={logout} onDone={() => setMe({ ...me, must_change_password: false })} />;
 
-  const common = { me, onLogout: logout };
+  const common = { me, onLogout: me.acting ? () => void stopSeeAs() : logout };
+  const pick = () => {
   // Board members who don't run a school only ever see the read-only board view.
   const isOwner = me.memberships.some((m) => m.role === "owner");
   const isBoard = me.memberships.some((m) => m.role === "board_member");
-  const STAFF = ["head", "vice_principal", "it_admin", "bursar", "teacher", "house_parent", "support"];
+  const STAFF = ["head_of_school", "head", "vice_principal", "it_admin", "bursar", "teacher", "house_parent", "support"];
   const isStaff = me.memberships.some((m) => STAFF.includes(m.role));
-  const runs = new Set(me.memberships.filter((m) => ["head", "vice_principal", "it_admin"].includes(m.role)).map((m) => m.school_id));
+  // Anyone with a 'see' right in a school can open that school's pages (which pages: their rights decide).
+  const runs = new Set(Object.keys(me.rights ?? {}).filter((sid) => opensSchool(me, sid)));
   if (!isOwner && !isStaff && isBoard) return <BoardView {...common} />;
   if (!isOwner && isStaff) {
     // Staff: their own portal; principals, vice principals and the IT team can also open their school's pages.
@@ -100,6 +103,8 @@ export default function App() {
     default:
       return <Dashboard {...common} />;
   }
+  };
+  return <MeContext.Provider value={me}>{pick()}</MeContext.Provider>;
 }
 
 function BranchRedirect({ branchId, tab }: { branchId: string; tab: BranchTab }) {

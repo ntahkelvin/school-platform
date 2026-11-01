@@ -47,9 +47,12 @@ export function TicketForm({ schoolId, onClose, onDone }: { schoolId: string; on
   const [f, setF] = useState<TicketIn>({ category: "", title: "", details: "", location: "", priority: "normal", photo: null });
   const [busy, error, run] = useBusy();
   const file = useRef<HTMLInputElement>(null);
+  const [places, setPlaces] = useState<{ id: string | null; name: string; kind: string }[]>([]);
+  useEffect(() => { ops.places(schoolId).then(setPlaces).catch(() => {}); }, [schoolId]);
   function submit(e: FormEvent) {
     e.preventDefault();
-    run(async () => onDone(await ops.raise(schoolId, { ...f, details: f.details || null, location: f.location || null })));
+    const place = places.find((p) => p.id && p.name.toLowerCase() === (f.location ?? "").trim().toLowerCase());
+    run(async () => onDone(await ops.raise(schoolId, { ...f, details: f.details || null, location: f.location || null, facility_id: place?.id ?? null })));
   }
   return (
     <Modal title="Report a problem or ask for something" onClose={onClose}>
@@ -65,7 +68,8 @@ export function TicketForm({ schoolId, onClose, onDone }: { schoolId: string; on
             <Field label="What's the problem?"><input required minLength={3} maxLength={200} value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })}
               placeholder={f.category === "store" ? "e.g. 4 boxes of chalk, 10 markers" : "e.g. Ceiling fan not working"} /></Field>
             <div className="row wrap">
-              <Field label="Where?"><input maxLength={120} value={f.location ?? ""} onChange={(e) => setF({ ...f, location: e.target.value })} placeholder="e.g. SS 2B classroom, Boys' hostel" /></Field>
+              <Field label="Where?"><input maxLength={120} list="places-list" value={f.location ?? ""} onChange={(e) => setF({ ...f, location: e.target.value })} placeholder="Pick a place or type one" />
+                <datalist id="places-list">{places.map((p) => <option key={p.name} value={p.name} />)}</datalist></Field>
               <Field label="How soon?">
                 <div className="segmented small-seg">{(["urgent", "normal", "low"] as const).map((p) => (
                   <button key={p} type="button" className={f.priority === p ? "on" : ""} onClick={() => setF({ ...f, priority: p })}>{PRIORITY[p].label}</button>))}</div>

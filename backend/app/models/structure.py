@@ -386,6 +386,7 @@ class Vehicle(IdMixin, TimestampMixin, Base):
     capacity: Mapped[int | None] = mapped_column(Integer)
     driver_name: Mapped[str | None] = mapped_column(String(100))
     driver_phone: Mapped[str | None] = mapped_column(String(30))
+    driver_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))  # a driver on the staff
     route: Mapped[str | None] = mapped_column(String(500))
     odometer_km: Mapped[int | None] = mapped_column(Integer)                 # latest reading
     insurance_expiry: Mapped[date | None] = mapped_column(Date)

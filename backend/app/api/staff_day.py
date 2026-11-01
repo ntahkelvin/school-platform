@@ -18,6 +18,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.access import not_found
+from app.core import rights
 from app.api.deps import current_user, managed_school_ids, owned_group_ids
 from app.api.electives import leads_subject
 from app.api.staff import STAFF_ROLES
@@ -42,8 +43,9 @@ def now_wat() -> datetime:
 
 # ---------- Who may do what ----------
 
-def runs(user: User, school: School) -> bool:
-    return school.group_id in owned_group_ids(user) or school.id in managed_school_ids(user)
+def runs(user: User, school: School, area: str | None = None, level: str | None = None) -> bool:
+    """May see (when reading) or change (when saving) this page's area of the school. See app.core.rights."""
+    return rights.may(user, school, area, level)
 
 
 def staff_ids(db: Session, school_id: uuid.UUID) -> set[uuid.UUID]:
@@ -58,6 +60,9 @@ def school_for(db: Session, user: User, school_id: uuid.UUID, manage: bool = Fal
         return s
     if not manage and user.id in staff_ids(db, school_id):
         return s
+    if manage and rights.any_area(user, s):
+        from app.api.access import check
+        check(user, s)
     raise not_found("School")
 
 

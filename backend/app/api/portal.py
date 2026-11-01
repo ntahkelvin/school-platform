@@ -307,7 +307,7 @@ def class_list(class_id: uuid.UUID, user: User = Depends(current_user), db: Sess
         raise not_found("Class")
     branch = db.get(Branch, c.branch_id)
     teaches = db.scalar(select(ClassSubject.id).where(ClassSubject.class_id == c.id, ClassSubject.teacher_user_id == user.id))
-    if not (c.form_teacher_id == user.id or teaches or runs_school(user, branch)):
+    if not (c.form_teacher_id == user.id or teaches or runs_school(user, branch, "students")):
         raise not_found("Class")
     return [_pupil(s) for s in db.scalars(select(Student).where(Student.class_id == c.id, Student.status == StudentStatus.active)
                                           .order_by(Student.last_name, Student.first_name)).unique()]

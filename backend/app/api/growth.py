@@ -302,7 +302,7 @@ def default_appraiser(db: Session, school_id: uuid.UUID, uid: uuid.UUID, fallbac
         d = db.get(Department, p.department_id)
         if d and d.head_user_id and d.head_user_id != uid:
             return d.head_user_id
-    for role in (Role.head, Role.vice_principal):
+    for role in (Role.head, Role.vice_principal, Role.head_of_school):
         h = db.scalar(select(Membership.user_id).where(Membership.school_id == school_id, Membership.role == role, Membership.user_id != uid))
         if h:
             return h
@@ -310,7 +310,7 @@ def default_appraiser(db: Session, school_id: uuid.UUID, uid: uuid.UUID, fallbac
 
 
 def appraisal_out(a: Appraisal, ppl: People, user: User, school: School) -> dict:
-    manage = runs(user, school)
+    manage = runs(user, school, level="change")
     role = "staff" if a.user_id == user.id else "appraiser" if a.appraiser_id == user.id else "manager" if manage else "viewer"
     hide_review = role == "staff" and a.status in ("self", "review")   # staff see the appraiser's view once it's ready to sign
     return {"id": str(a.id), "person": ppl.card(a.user_id), "appraiser_id": str(a.appraiser_id) if a.appraiser_id else None,
@@ -526,7 +526,7 @@ def cpd_out(c: CpdRecord, ppl: People, user: User, school: School) -> dict:
     return {"id": str(c.id), "person": ppl.card(c.user_id), "title": c.title, "provider": c.provider, "kind": c.kind,
             "kind_label": CPD_KINDS.get(c.kind, c.kind), "on_date": c.on_date.isoformat(), "hours": c.hours, "notes": c.notes,
             "impact": c.impact, "verified": bool(c.verified_by_id), "verified_by": ppl.name(c.verified_by_id) or None,
-            "can_edit": c.user_id == user.id or runs(user, school)}
+            "can_edit": c.user_id == user.id or runs(user, school, level="change")}
 
 
 @router.get("/schools/{school_id}/cpd")
@@ -620,7 +620,7 @@ def mentoring_out(m: Mentoring, ppl: People, user: User, school: School) -> dict
     return {"id": str(m.id), "mentor": ppl.card(m.mentor_id), "mentee": ppl.card(m.mentee_id), "focus": m.focus,
             "started_on": m.started_on.isoformat(), "status": m.status,
             "meetings": sorted(m.meetings, key=lambda x: x.get("date", ""), reverse=True),
-            "can_log": user.id in (m.mentor_id, m.mentee_id) or runs(user, school), "can_end": runs(user, school) or user.id == m.mentor_id}
+            "can_log": user.id in (m.mentor_id, m.mentee_id) or runs(user, school, level="change"), "can_end": runs(user, school, level="change") or user.id == m.mentor_id}
 
 
 @router.get("/schools/{school_id}/mentoring")
@@ -693,7 +693,7 @@ def kudos_out(k: Kudos, ppl: People, user: User, school: School) -> dict:
     return {"id": str(k.id), "from": ppl.card(k.from_id) if k.from_id else None, "to": ppl.card(k.to_id), "badge": k.badge,
             "badge_label": BADGES.get(k.badge, k.badge), "message": k.message, "created_at": k.created_at.isoformat(),
             "cheers": len(k.cheers), "cheered": str(user.id) in k.cheers,
-            "can_delete": k.from_id == user.id or runs(user, school)}
+            "can_delete": k.from_id == user.id or runs(user, school, level="change")}
 
 
 @router.get("/schools/{school_id}/kudos")
@@ -1215,7 +1215,7 @@ def my_growth(school_id: uuid.UUID, user: User = Depends(current_user), db: Sess
             "appraisal": {"id": str(mine.id), "period_label": mine.period_label, "status": mine.status, "staff_signed": bool(mine.staff_signed_at),
                           "goals": mine.goals} if mine else None,
             "appraisals_to_review": to_review, "cpd_hours": hours, "cpd_target": st.cpd_target_hours, "kudos": kudos,
-            "pulse_done": pulse_done, "can_observe": runs(user, school) or bool(led_ids(db, user, school_id)),
+            "pulse_done": pulse_done, "can_observe": runs(user, school, level="change") or bool(led_ids(db, user, school_id)),
             "mentoring": [mentoring_out(m, ppl, user, school) for m in ments]}
 
 

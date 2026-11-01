@@ -6,6 +6,12 @@ cd "$(dirname "$0")"
 
 say() { printf "\n\033[1;32m==> %s\033[0m\n" "$1"; }
 
+# Unzipping never deletes files, so remove any the newest version no longer has.
+if [ -f .manifest ] && [ -d .git ]; then
+  OLD=$(git ls-files | grep -vxF -f .manifest | grep -vx .manifest || true)
+  if [ -n "$OLD" ]; then say "Removing old files"; echo "$OLD" | xargs -r git rm -q --; echo "$OLD"; fi
+fi
+
 say "Making sure the database is running"
 sudo service postgresql start >/dev/null 2>&1 || true
 

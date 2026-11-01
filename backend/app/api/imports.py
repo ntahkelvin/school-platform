@@ -162,7 +162,7 @@ VEHICLE_KINDS = {"Bus": VehicleKind.bus, "Van": VehicleKind.van, "Car": VehicleK
 EMPLOYMENT = {"Full time": EmploymentType.full_time, "Part time": EmploymentType.part_time,
               "Contract": EmploymentType.contract, "NYSC corps member": EmploymentType.nysc, "NYSC": EmploymentType.nysc,
               "Corps member": EmploymentType.nysc, "Volunteer": EmploymentType.volunteer}
-ACCESS = {"Head / principal": Role.head, "Principal": Role.head, "Head": Role.head, "Vice principal": Role.vice_principal,
+ACCESS = {"Head of school": Role.head_of_school, "President": Role.head_of_school, "Rector": Role.head_of_school, "Head / principal": Role.head, "Principal": Role.head, "Head": Role.head, "Vice principal": Role.vice_principal,
           "IT team": Role.it_admin, "IT admin": Role.it_admin, "Bursar": Role.bursar,
           "Teacher": Role.teacher, "House parent": Role.house_parent, "Support staff": Role.support, "None": Role.support}
 COLOURS = {
@@ -349,7 +349,9 @@ def role_from_job(job: str, teaching: bool) -> Role:
         return Role.vice_principal
     if re.search(r"\bict officer|\bit (officer|admin|manager)|systems? admin", j):
         return Role.it_admin
-    if "vice" not in j and "deputy" not in j and re.search(r"principal|head ?teacher|head ?master|head ?mistress|rector", j):
+    if "vice" not in j and "deputy" not in j and re.search(r"\bpresident\b|head of (the )?school|\brector\b|school head\b", j):
+        return Role.head_of_school
+    if "vice" not in j and "deputy" not in j and re.search(r"principal|head ?teacher|head ?master|head ?mistress", j):
         return Role.head
     if re.search(r"bursar|accountant|cashier", j):
         return Role.bursar
@@ -375,6 +377,10 @@ def do_staff(ctx: Ctx, r: dict) -> tuple[str, str]:
     hod = yes(r.get("hod"))
     if hod and not dept:
         raise RowProblem("Head of department is Yes, but no department is given")
+    from app.api.rights import rank_of
+    from app.core.rights import RANK
+    if rank_of(ctx.user, ctx.school) <= RANK.get(role.value, 0):
+        raise RowProblem(f"Only someone above a {role.value.replace('_', ' ')} can give that access. Set App access lower, or ask the owner.")
     person, password = find_or_create_user(ctx.db, name, phone, email)
     ctx.login(person, password, "Staff")
     added = add_staff_role(ctx.db, ctx.branch, person, role)

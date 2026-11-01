@@ -146,7 +146,7 @@ def teaching_view(db: Session, branch: Branch) -> TeachingOut:
     def is_teaching(uid):
         p = profiles.get(uid)
         r = roles.get(uid, set())
-        return (p.teaching if p else True) and bool(r & {Role.teacher, Role.head, Role.vice_principal, Role.house_parent})
+        return (p.teaching if p else True) and bool(r & {Role.teacher, Role.head_of_school, Role.head, Role.vice_principal, Role.house_parent})
     teachers = [TeacherOut(user_id=u.id, full_name=u.full_name, title=profiles[u.id].title if u.id in profiles else None,
                            job_title=profiles[u.id].job_title if u.id in profiles else None,
                            department_name=depts.get(profiles[u.id].department_id) if u.id in profiles else None,

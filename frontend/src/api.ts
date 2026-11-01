@@ -21,9 +21,11 @@ export function setToken(token: string | null): void {
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  code: string | null;   // e.g. "private:health" when the records are private
+  constructor(status: number, message: string, code: string | null = null) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -48,7 +50,8 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     } catch {
       /* not JSON */
     }
-    throw new ApiError(res.status, message);
+    const m = /^(private:\w+)\|(.*)$/.exec(message);
+    throw m ? new ApiError(res.status, m[2], m[1]) : new ApiError(res.status, message);
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
@@ -62,7 +65,7 @@ export type SchoolType = "day" | "boarding" | "mixed";
 export type Gender = "male" | "female";
 export type BoardingStatus = "day" | "boarder";
 export type StudentStatus = "active" | "graduated" | "withdrawn";
-export type StaffRole = "head" | "vice_principal" | "it_admin" | "bursar" | "teacher" | "house_parent" | "support";
+export type StaffRole = "head_of_school" | "head" | "vice_principal" | "it_admin" | "bursar" | "teacher" | "house_parent" | "support";
 export type EmploymentType = "full_time" | "part_time" | "contract" | "nysc" | "volunteer";
 
 export interface Branch {
@@ -113,6 +116,9 @@ export interface Me {
   phone: string | null;
   must_change_password?: boolean;
   memberships: { role: string; group_id: string; school_id: string | null; branch_id: string | null }[];
+  rights?: Record<string, string[]>;        // school id -> rights there
+  head_titles?: Record<string, string>;     // school id -> what it calls its head of school
+  acting?: { by: string; school_id: string } | null;   // someone is 'seeing as' this person
 }
 export interface LoginInfo {
   user_id: string;
@@ -444,9 +450,10 @@ export const SCHOOL_TYPE_LABEL: Record<SchoolType, string> = {
 };
 
 export const ROLE_LABEL: Record<StaffRole, string> = {
-  head: "Head / principal",
+  head_of_school: "Head of school",
+  head: "Principal",
   vice_principal: "Vice principal",
-  it_admin: "IT team",
+  it_admin: "ICT admin",
   bursar: "Bursar",
   teacher: "Teacher",
   house_parent: "House parent",

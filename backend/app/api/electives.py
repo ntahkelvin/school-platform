@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.access import not_found
+from app.core import rights
 from app.api.deps import current_user, managed_school_ids, owned_group_ids
 from app.api.teaching import check_teacher
 from app.core.db import get_db
@@ -30,8 +31,8 @@ def is_senior(level: str) -> bool:
 
 # ---------- Who may do what ----------
 
-def runs_school(user: User, branch: Branch) -> bool:
-    return branch.school.group_id in owned_group_ids(user) or branch.school_id in managed_school_ids(user)
+def runs_school(user: User, branch: Branch, area: str | None = None, level: str | None = None) -> bool:
+    return rights.may(user, branch.school, area, level)
 
 
 def leads_subject(db: Session, user: User, subject: Subject) -> bool:

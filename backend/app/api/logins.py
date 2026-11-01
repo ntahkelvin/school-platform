@@ -13,16 +13,17 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.access import not_found, owned_school
+from app.core import rights
 from app.api.deps import current_user
 from app.api.people import temporary_password
 from app.core.db import get_db
 from app.core.security import hash_password
-from app.models import Board, BoardMember, Branch, Membership, Role, StaffProfile, User
+from app.models import AuditEntry, Board, BoardMember, Branch, Membership, Notice, Role, School, StaffProfile, User
 
 router = APIRouter(prefix="/api", tags=["logins"])
 
 ROLE_LABEL = {
-    Role.owner: "Owner", Role.head: "Head", Role.vice_principal: "Vice principal", Role.it_admin: "IT team", Role.bursar: "Bursar", Role.teacher: "Teacher",
+    Role.owner: "Owner", Role.head_of_school: "Head of school", Role.head: "Head", Role.vice_principal: "Vice principal", Role.it_admin: "IT team", Role.bursar: "Bursar", Role.teacher: "Teacher",
     Role.house_parent: "House parent", Role.support: "Support staff", Role.parent: "Parent",
     Role.student: "Student", Role.board_member: "Board member",
 }
@@ -86,6 +87,12 @@ def _target(db: Session, admin: User, school_id: uuid.UUID, user_id: uuid.UUID) 
     return people[user_id][0]
 
 
+def _higher(db: Session, admin: User, person: User, school_id: uuid.UUID) -> bool:
+    from app.api.rights import rank_of
+    s = db.get(School, school_id)
+    return rank_of(person, s) >= rank_of(admin, s)
+
+
 @router.get("/schools/{school_id}/logins", response_model=list[LoginOut])
 def list_logins(school_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
     owned_school(db, user, school_id)
@@ -122,6 +129,13 @@ class ResetOut(BaseModel):
 def reset_password(school_id: uuid.UUID, user_id: uuid.UUID, data: ResetIn,
                    user: User = Depends(current_user), db: Session = Depends(get_db)):
     person = _target(db, user, school_id, user_id)
+    if _higher(db, user, person, school_id):
+        # Allowed so the ICT team can help a principal who is locked out, but they and the principal are told.
+        s = db.get(School, school_id)
+        rights.notify_heads(db, s, f"{user.full_name} reset the password of {person.full_name}.", kind="info", icon="key", skip=user.id)
+        db.add(Notice(user_id=person.id, school_id=school_id, kind="info", icon="key",
+                      text=f"{user.full_name} reset your password. If you didn't ask for this, tell the owner."))
+        db.add(AuditEntry(school_id=school_id, actor_id=user.id, action="rights", what=f"reset the password of {person.full_name}"))
     password = data.password or temporary_password()
     person.password_hash = hash_password(password)
     person.must_change_password = True
@@ -138,6 +152,8 @@ class ActiveIn(BaseModel):
 def set_active(school_id: uuid.UUID, user_id: uuid.UUID, data: ActiveIn,
                user: User = Depends(current_user), db: Session = Depends(get_db)):
     person = _target(db, user, school_id, user_id)
+    if _higher(db, user, person, school_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You can't switch off the login of someone above you")
     person.is_active = data.active
     db.commit()
     return one_login(school_id, user_id, user, db)

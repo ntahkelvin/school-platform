@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.core import rights
 from app.api.deps import current_user, managed_school_ids, owned_group_ids
 from app.core.db import get_db
 from app.models import (
@@ -16,7 +17,7 @@ from app.models import (
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
 
-STAFF_ROLES = [Role.head, Role.vice_principal, Role.it_admin, Role.bursar, Role.teacher, Role.house_parent, Role.support]
+STAFF_ROLES = [Role.head_of_school, Role.head, Role.vice_principal, Role.it_admin, Role.bursar, Role.teacher, Role.house_parent, Role.support]
 
 
 class Today(BaseModel):
@@ -41,7 +42,7 @@ class SchoolStats(BaseModel):
 def dashboard_stats(on_date: date | None = Query(default=None, alias="date"),
                     user: User = Depends(current_user), db: Session = Depends(get_db)):
     groups = owned_group_ids(user)
-    managed = managed_school_ids(user)
+    managed = {sid for sid in managed_school_ids(user) if rights.has(user, db.get(School, sid), "school.see")}
     if not groups and not managed:
         return {}
     day = on_date or date.today()

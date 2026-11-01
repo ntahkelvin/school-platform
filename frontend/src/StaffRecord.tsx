@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNod
 import { api, errorText, getToken, type Me, type StaffMember, type Subject } from "./api";
 import { StaffForm } from "./DailyTabs";
 import Icon from "./Icon";
+import { AskAccess } from "./Rights";
 import Layout from "./Layout";
 import { LoginPanel } from "./Logins";
 import { subjectLook } from "./look";
@@ -27,7 +28,7 @@ export interface StaffRecordData {
 }
 
 const ROLE_NAME: Record<string, string> = {
-  head: "Principal", vice_principal: "Vice principal", it_admin: "IT team", bursar: "Bursar", teacher: "Teacher",
+  head_of_school: "Head of school", head: "Principal", vice_principal: "Vice principal", it_admin: "ICT admin", bursar: "Bursar", teacher: "Teacher",
   house_parent: "House parent", support: "Support staff",
 };
 const EMPLOYMENT: Record<string, string> = { full_time: "Full time", part_time: "Part time", contract: "Contract", nysc: "NYSC corps member", volunteer: "Volunteer" };
@@ -314,7 +315,7 @@ export default function StaffRecordPage({ me, onLogout, schoolId, userId }: { me
 
             {r.sees_pay && r.pay && (
               <Card icon="banknote" hueName="green" title="Pay (private)" action={<button className="ghost small with-icon" onClick={() => setEditing("pay")}><Icon name="edit" size={14} />Edit</button>}>
-                <p className="small muted">Only the owner, principal and bursar can see this.</p>
+                <p className="small muted">Private: only people with the staff pay right can see this.</p>
                 <dl className="record-list">
                   <Row label="Grade level">{[r.pay.grade_level, r.pay.step ? `step ${r.pay.step}` : null].filter(Boolean).join(", ")}</Row>
                   <Row label="Bank">{r.pay.bank_name}</Row>
@@ -323,6 +324,8 @@ export default function StaffRecordPage({ me, onLogout, schoolId, userId }: { me
                 </dl>
               </Card>
             )}
+
+            {!r.is_self && !r.sees_pay && !me.acting && <AskAccess schoolId={schoolId} right="private.staff_pay" what="Pay and bank details" />}
 
             {!r.is_self && r.may_edit && (
               <section className="record-card"><LoginPanel schoolId={schoolId} userId={userId} /></section>

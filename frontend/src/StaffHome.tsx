@@ -34,7 +34,7 @@ interface Home { full_name: string; owner: boolean; schools: SchoolHome[] }
 interface Pupil { id: string; name: string; admission_no: string; class_name: string | null; gender: string; boarder: boolean; in_group: boolean }
 
 const ROLE_NAME: Record<string, string> = {
-  head: "Principal", vice_principal: "Vice principal", it_admin: "IT team", bursar: "Bursar", teacher: "Teacher",
+  head_of_school: "Head of school", head: "Principal", vice_principal: "Vice principal", it_admin: "ICT admin", bursar: "Bursar", teacher: "Teacher",
   house_parent: "House parent", support: "Support staff",
 };
 const FALLBACK = ["#1d5e3a", "#1e40af", "#7e22ce", "#b45309", "#0f766e", "#be123c"];

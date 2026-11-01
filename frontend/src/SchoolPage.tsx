@@ -25,6 +25,8 @@ import StarterSetup from "./StarterSetup";
 import BoardsCard from "./BoardsCard";
 import { org } from "./orgApi";
 import { go } from "./router";
+import RightsPage from "./Rights";
+import { AreaContext, rightsIn } from "./rightsApi";
 import { href, type SchoolTab } from "./router";
 import {
   CLUB_KIND, DEPARTMENT_KIND, EVENT_CATEGORY, optionsOf, PERIOD_KIND, POLICY_CATEGORIES, records, structure,
@@ -55,7 +57,19 @@ const TAB_LABEL: Record<SchoolTab, string> = {
   "staff-day": "Staff day",
   growth: "Growth",
   operations: "Operations",
+  rights: "Rights",
 };
+
+// Which area of rights each page belongs to.
+export const TAB_AREA: Record<SchoolTab, string> = {
+  overview: "school", students: "students", attendance: "attendance", classes: "classes", staff: "staff", facilities: "facilities",
+  sections: "setup", departments: "setup", houses: "setup", grading: "setup", calendar: "setup", policies: "setup",
+  imports: "imports", logins: "logins", teaching: "teaching", "staff-day": "staff_day", growth: "growth", operations: "operations", rights: "rights",
+};
+function tabOpen(rights: Set<string>, t: SchoolTab): boolean {
+  const a = TAB_AREA[t];
+  return a === "imports" ? rights.has("imports.change") : rights.has(`${a}.see`);
+}
 
 export default function SchoolPage({
   me, onLogout, schoolId, tab,
@@ -88,6 +102,11 @@ export default function SchoolPage({
   // Figures can change on other pages (an upload, say), so fetch them fresh on every page.
   useEffect(() => { loadClasses(); }, [tab, loadClasses]);
 
+  const rights = rightsIn(me, schoolId);
+  const owner = me.memberships.some((m) => m.role === "owner") && !me.acting;
+  const area = TAB_AREA[tab];
+  const open = tabOpen(rights, tab);
+  const viewOnly = open && area !== "imports" && !rights.has(`${area}.change`) && area !== "rights";
   return (
     <Layout wide me={me} onLogout={onLogout} crumbs={[{ label: "Home", href: "#/" }, { label: school?.name ?? "School" }]}>
       {error && <p className="error">{error}</p>}
@@ -96,8 +115,8 @@ export default function SchoolPage({
           <SchoolHero
             school={school}
             profile={profile}
-            onRename={() => setEditing(true)}
-            onManage={() => setManaging(true)}
+            onRename={rights.has("school.change") ? () => setEditing(true) : undefined}
+            onManage={owner ? () => setManaging(true) : undefined}
           />
 
           {managing && <ManageSchool school={school} onClose={() => setManaging(false)} />}
@@ -117,12 +136,18 @@ export default function SchoolPage({
           )}
 
           <div className="school-shell" style={{ "--school": schoolColour(school) } as React.CSSProperties}>
-            <SchoolNav schoolId={school.id} tab={tab} />
+            <SchoolNav schoolId={school.id} tab={tab} rights={rights} />
             <div className="school-main">
               <h2 className="main-title">
                 <Glyph icon={TAB_LOOK[tab].icon} hue={TAB_LOOK[tab].hue} size={42} />
                 {TAB_LABEL[tab]}
+                {viewOnly && <span className="view-only" title="You can look but not change this page"><Icon name="eye" size={14} />View only</span>}
               </h2>
+              {!open ? (
+                <Empty icon="lock">This page is not open to you. Ask the principal if you need it.</Empty>
+              ) : (
+              <AreaContext.Provider value={{ schoolId: school.id, area }}>
+              <div className={viewOnly ? "read-only" : "can-change"}>
           {tab === "overview" && <OverviewTab school={school} profile={profile} onChanged={load} />}
           {campus && tab === "students" && <StudentsTab branch={campus} classes={classes} onClassesChanged={loadClasses} />}
           {campus && tab === "attendance" && <AttendanceTab branch={campus} />}
@@ -146,6 +171,10 @@ export default function SchoolPage({
           {tab === "operations" && <OperationsPage schoolId={school.id} />}
           {campus && tab === "staff-day" && <StaffDayPage schoolId={school.id} branchId={campus.id} />}
           {campus && tab === "imports" && <BulkPage branchId={campus.id} onChanged={() => { loadClasses(); load(); }} />}
+          {tab === "rights" && <RightsPage schoolId={school.id} />}
+              </div>
+              </AreaContext.Provider>
+              )}
             </div>
           </div>
         </>
@@ -157,7 +186,7 @@ export default function SchoolPage({
 // ---------------- Header and menu ----------------
 
 function SchoolHero({ school, profile, onRename, onManage }: {
-  school: School; profile: Profile | null; onRename: () => void; onManage: () => void;
+  school: School; profile: Profile | null; onRename?: () => void; onManage?: () => void;
 }) {
   const place = [profile?.lga, profile?.state].filter(Boolean).join(", ");
   const site = profile?.website?.replace(/^https?:\/\//, "").replace(/\/$/, "");
@@ -166,8 +195,8 @@ function SchoolHero({ school, profile, onRename, onManage }: {
       <div className="hero-band">
         <span className="hero-pattern" aria-hidden="true" />
         <div className="hero-actions">
-          <button className="on-band" onClick={onRename}>Rename or change type</button>
-          <button className="on-band" onClick={onManage}>Move or remove</button>
+          {onRename && <button className="on-band" onClick={onRename}>Rename or change type</button>}
+          {onManage && <button className="on-band" onClick={onManage}>Move or remove</button>}
         </div>
       </div>
       <div className="hero-body">
@@ -192,13 +221,13 @@ function SchoolHero({ school, profile, onRename, onManage }: {
 
 const NAV_GROUPS: { label: string; tabs: SchoolTab[] }[] = [
   { label: "Daily", tabs: ["overview", "students", "attendance", "classes", "teaching", "staff", "staff-day", "growth", "operations", "facilities"] },
-  { label: "Set-up", tabs: ["sections", "departments", "houses", "grading", "calendar", "policies", "imports", "logins"] },
+  { label: "Set-up", tabs: ["sections", "departments", "houses", "grading", "calendar", "policies", "imports", "logins", "rights"] },
 ];
 
-function SchoolNav({ schoolId, tab }: { schoolId: string; tab: SchoolTab }) {
+function SchoolNav({ schoolId, tab, rights }: { schoolId: string; tab: SchoolTab; rights: Set<string> }) {
   return (
     <nav className="school-nav" aria-label="School menu">
-      {NAV_GROUPS.map((g) => (
+      {NAV_GROUPS.map((g) => ({ ...g, tabs: g.tabs.filter((t) => tabOpen(rights, t)) })).filter((g) => g.tabs.length > 0).map((g) => (
         <div key={g.label} className="nav-group">
           <span className="nav-group-label">{g.label}</span>
           {g.tabs.map((t) => (

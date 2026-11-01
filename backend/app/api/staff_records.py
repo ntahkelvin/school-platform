@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.access import not_found
+from app.core import rights
 from app.api.deps import current_user, owned_group_ids
 from app.api.electives import runs_school
 from app.api.staff import STAFF_ROLES
@@ -47,10 +48,10 @@ def is_staff(db: Session, school_id: uuid.UUID, user_id: uuid.UUID) -> bool:
                                                       Membership.role.in_(STAFF_ROLES))))
 
 
-def sees_pay(user: User, school: School) -> bool:
-    if school.group_id in owned_group_ids(user):
-        return True
-    return any(m.school_id == school.id and m.role in (Role.head, Role.bursar) for m in user.memberships)
+def sees_pay(user: User, school: School, what: str = "") -> bool:
+    """Pay, bank details and documents are private: the 'staff pay' right (reported when it comes from temporary access)."""
+    from sqlalchemy.orm import object_session
+    return rights.use_private(object_session(user), user, school, "staff_pay", what)
 
 
 def access(db: Session, user: User, school_id: uuid.UUID, person_id: uuid.UUID) -> tuple[School, bool, bool]:
@@ -58,13 +59,21 @@ def access(db: Session, user: User, school_id: uuid.UUID, person_id: uuid.UUID) 
     school = db.get(School, school_id)
     if not school or not is_staff(db, school_id, person_id):
         raise not_found("Staff member")
-    runs = runs_school(user, _branch(db, school_id))
-    pay = sees_pay(user, school)
-    if runs or user.id == person_id:
+    b = _branch(db, school_id)
+    sees, edits = runs_school(user, b, "staff", "see"), runs_school(user, b, "staff", "change")
+    pay = user.id != person_id and sees_pay(user, school, name_of_person(db, person_id))
+    if edits or user.id == person_id:
         return school, True, pay
+    if sees:
+        return school, False, pay
     if pay:  # the bursar: may read the record for pay purposes
         return school, False, pay
     raise not_found("Staff member")
+
+
+def name_of_person(db: Session, user_id: uuid.UUID) -> str:
+    u = db.get(User, user_id)
+    return u.full_name if u else ""
 
 
 def _profile(db: Session, school_id: uuid.UUID, user_id: uuid.UUID) -> StaffProfile:
@@ -258,7 +267,7 @@ class PayIn(BaseModel):
 def update_pay(school_id: uuid.UUID, user_id: uuid.UUID, data: PayIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     school, may_edit, pay = access(db, user, school_id, user_id)
     if not pay:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the owner, principal and bursar can change pay details")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "private:staff_pay|Pay details are private. Ask the principal for access.")
     if data.account_number and not data.account_number.isdigit():
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "The account number should be digits only (10 for NUBAN)")
     p = _profile(db, school_id, user_id)

@@ -8,6 +8,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import current_user
+from app.core import rights
 from app.core.db import get_db
 from app.core.phone import looks_like_phone, normalize_phone
 from app.core.security import create_access_token, hash_password, verify_password
@@ -37,6 +38,9 @@ class MeOut(BaseModel):
     phone: str | None
     must_change_password: bool = False
     memberships: list[MembershipOut]
+    rights: dict[str, list[str]] = {}          # school id -> what this person may see and change there
+    head_titles: dict[str, str] = {}           # school id -> what the school calls its head of school
+    acting: dict | None = None                 # set while someone is 'seeing as' this person
 
     model_config = {"from_attributes": True}
 
@@ -55,8 +59,14 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
 
 
 @router.get("/me", response_model=MeOut)
-def me(user: User = Depends(current_user)) -> User:
-    return user
+def me(user: User = Depends(current_user), db: Session = Depends(get_db)) -> MeOut:
+    schools = rights.school_ids_with_rights(db, user)
+    actor = rights.acting(user)
+    out = MeOut.model_validate(user)
+    out.rights = {str(sid): sorted(rights.rights_of(user, s)) for sid, s in schools.items()}
+    out.head_titles = {str(sid): s.head_title or "Head of school" for sid, s in schools.items()}
+    out.acting = {"by": actor.full_name, "school_id": str(user.__dict__.get("acting_school"))} if actor else None
+    return out
 
 
 class PasswordChange(BaseModel):

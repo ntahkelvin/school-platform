@@ -14,6 +14,7 @@ from app.models.ops import ClinicVisit, DeskMember, GatePass, Incident, Medicine
 from app.models.logistics import (
     BusRegister, BusRoute, FuelLog, KitchenSettings, MealPlan, MealService, RouteRider, StockItem, StockMove, Trip, VehicleCheck, VehicleService,
 )
+from app.models.rights import AccessGrant, AuditEntry, Notice, RightSetting
 from app.models.staffday import DutyAssignment, LeaveRequest, LessonNote, StaffAttendance, StaffDaySettings
 from app.models.tenancy import Branch, School, SchoolGroup, SchoolType
 from app.models.users import Membership, Role, User
@@ -33,5 +34,6 @@ __all__ = [
     "ClinicVisit", "DeskMember", "GatePass", "Incident", "MedicineStock", "StudentHealth", "Ticket", "Visitor",
     "BusRegister", "BusRoute", "FuelLog", "KitchenSettings", "MealPlan", "MealService", "RouteRider", "StockItem", "StockMove", "Trip",
     "VehicleCheck", "VehicleService",
+    "AccessGrant", "AuditEntry", "Notice", "RightSetting",
     "Membership", "Role", "User",
 ]

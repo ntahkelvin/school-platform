@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { api, errorText, type LoginInfo, type Me, type NewLogin } from "./api";
 import Icon from "./Icon";
+import { rightsApi, startSeeAs, useCan, useMe } from "./rightsApi";
 import type { Hue } from "./look";
 import { Avatar, Empty, Field, Glyph, hue, Modal, nicePhone, Stat } from "./ui";
 
@@ -69,11 +70,14 @@ export function LoginPanel({ schoolId, userId }: { schoolId: string; userId: str
   const [info, setInfo] = useState<LoginInfo | null>(null);
   const [fresh, setFresh] = useState<NewLogin | null>(null);
   const [error, setError] = useState("");
+  const can = useCan(schoolId);
+  const me = useMe();
   const load = useCallback(() => { api.loginInfo(schoolId, userId).then(setInfo).catch((err) => setError(errorText(err))); }, [schoolId, userId]);
   useEffect(load, [load]);
   if (error) return <p className="error">{error}</p>;
   if (!info) return null;
   const st = statusOf(info);
+  const seeAs = can("power.see_as") && me?.id !== userId && info.is_active && !me?.acting;
   return (
     <section className="login-panel" style={hue(st.hue)}>
       <div className="login-panel-head">
@@ -92,10 +96,14 @@ export function LoginPanel({ schoolId, userId }: { schoolId: string; userId: str
             <dt>Username</dt><dd>{nicePhone(info.phone) || info.email}{info.phone && info.email ? <span className="muted"> or {info.email}</span> : null}</dd>
             <dt>Password</dt><dd className="muted">Hidden. Nobody can see it, not even you. Reset it if it's forgotten.</dd>
           </dl>
-          {info.is_admin ? (
-            <p className="small muted">This person is an owner, so they manage their own login.</p>
+          {info.is_admin || !can("logins.change") ? (
+            <>
+              {info.is_admin && <p className="small muted">This person is an owner, so they manage their own login.</p>}
+              {seeAs && <div className="row wrap"><SeeAsButton schoolId={schoolId} userId={userId} name={info.full_name} /></div>}
+            </>
           ) : (
             <div className="row wrap">
+              {seeAs && <SeeAsButton schoolId={schoolId} userId={userId} name={info.full_name} />}
               <button className="with-icon" onClick={() => {
                 if (window.confirm(`Give ${info.full_name} a new password? The old one stops working.`))
                   api.resetPassword(schoolId, userId).then(setFresh).catch((err) => setError(errorText(err)));
@@ -109,6 +117,19 @@ export function LoginPanel({ schoolId, userId }: { schoolId: string; userId: str
         </>
       )}
     </section>
+  );
+}
+
+function SeeAsButton({ schoolId, userId, name }: { schoolId: string; userId: string; name: string }) {
+  const [error, setError] = useState("");
+  return (
+    <>
+      <button className="with-icon see-as-button" onClick={() => {
+        if (window.confirm(`See the platform exactly as ${name} sees it, to help them? Nothing can be changed, private records stay hidden, and the principal is told.`))
+          rightsApi.seeAs(schoolId, userId).then((r) => startSeeAs(r.access_token)).catch((err) => setError(errorText(err)));
+      }}><Icon name="eye" size={16} />See as {name.split(" ")[0]}</button>
+      {error && <p className="error">{error}</p>}
+    </>
   );
 }
 

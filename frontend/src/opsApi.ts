@@ -18,7 +18,7 @@ export interface Ticket {
   raised_by: Person | null; assigned_to: Person | null; due_on: string | null; overdue: boolean; photo: string | null; created_at: string;
   done_at: string | null; rating: number | null; feedback: string | null; cost: number | null; comments: Comment[]; can_work: boolean; is_mine: boolean; can_rate: boolean;
 }
-export interface TicketIn { category: string; title: string; details: string | null; location: string | null; priority: string; photo: string | null }
+export interface TicketIn { category: string; title: string; details: string | null; location: string | null; priority: string; photo: string | null; facility_id?: string | null }
 export interface DeskStats { open: number; overdue: number; urgent: number; done_30: number; avg_hours: number | null; rating: number | null }
 export interface Visitor {
   id: string; kind: string; kind_label: string; name: string; phone: string | null; organisation: string | null; purpose: string; to_see: string | null;
@@ -58,7 +58,8 @@ export interface OpsOverview {
   clinic: { today: number; lying_in: number; trend: { date: string; visits: number; fever: number }[]; low_stock: number };
   incidents: { open: number; serious: number }; insights: Insight[];
 }
-export interface MyOps { desks: (DeskInfo & { key: string; open: number })[]; my_open: number; to_rate: number; assigned: number; can_request_pass: boolean; can_approve_pass: boolean; passes_waiting: number }
+export interface DeskLive { big: string; line: string; more: string; alerts: number }
+export interface MyOps { desks: (DeskInfo & { key: string; open: number; info: DeskLive | null })[]; my_open: number; to_rate: number; assigned: number; can_request_pass: boolean; can_approve_pass: boolean; passes_waiting: number }
 
 const g = <T,>(p: string) => api.raw<T>("GET", p);
 export const ops = {
@@ -68,6 +69,7 @@ export const ops = {
   overview: (sid: string) => g<OpsOverview>(`/api/schools/${sid}/ops/overview`),
   me: (sid: string) => g<MyOps>(`/api/me/schools/${sid}/ops`),
   tickets: (sid: string, scope: "mine" | "desk" | "all", desk?: string) => g<Ticket[]>(`/api/schools/${sid}/tickets?scope=${scope}${desk ? `&desk=${desk}` : ""}`),
+  places: (sid: string) => g<{ id: string | null; name: string; kind: string }[]>(`/api/schools/${sid}/places`),
   raise: (sid: string, t: TicketIn) => api.raw<Ticket>("POST", `/api/schools/${sid}/tickets`, t),
   act: (id: string, body: { action: string; user_id?: string; text?: string | null; rating?: number; cost?: number | null; priority?: string; desk?: string }) => api.raw<Ticket>("PUT", `/api/tickets/${id}`, body),
   summary: (sid: string) => g<{ desks: Record<string, DeskStats>; insights: Insight[] }>(`/api/schools/${sid}/tickets/summary`),

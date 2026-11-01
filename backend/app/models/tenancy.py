@@ -57,6 +57,7 @@ class School(IdMixin, TimestampMixin, Base):
     approval_number: Mapped[str | None] = mapped_column(String(100))  # Ministry of Education approval
     waec_centre_no: Mapped[str | None] = mapped_column(String(50))
     neco_centre_no: Mapped[str | None] = mapped_column(String(50))
+    head_title: Mapped[str | None] = mapped_column(String(40))   # what this school calls its head of school: President, Rector...
 
     group: Mapped[SchoolGroup] = relationship(back_populates="schools")
     # Each school has exactly one campus record behind the scenes; the screens never show it as a "branch".

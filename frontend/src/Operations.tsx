@@ -9,6 +9,7 @@ import { HelpdeskBoard, useOpsMeta } from "./Helpdesk";
 import Icon from "./Icon";
 import { IncidentsBoard } from "./Incidents";
 import Layout from "./Layout";
+import { api } from "./api";
 import { ops, type Desk, type OpsOverview } from "./opsApi";
 import { href } from "./router";
 import { ClinicBoard } from "./SickBay";
@@ -18,6 +19,8 @@ import { KitchenBoard } from "./Kitchen";
 import { logi, naira, type LogiOverview } from "./logiApi";
 import { StoreBoard } from "./Store";
 import { TransportBoard } from "./Transport";
+import { AskAccess } from "./Rights";
+import { useCan } from "./rightsApi";
 
 type Seg = "overview" | "helpdesk" | "gate" | "sickbay" | "incidents" | "kitchen" | "transport" | "store" | "teams";
 const SEGS: { key: Seg; label: string; icon: string }[] = [
@@ -31,6 +34,7 @@ const SEGS: { key: Seg; label: string; icon: string }[] = [
 export default function OperationsPage({ schoolId }: { schoolId: string }) {
   const [seg, setSeg] = useState<Seg>(() => { try { return (sessionStorage.getItem("ops-seg") as Seg) || "overview"; } catch { return "overview"; } });
   const pick = (s: Seg) => { setSeg(s); try { sessionStorage.setItem("ops-seg", s); } catch { /* private mode */ } };
+  const can = useCan(schoolId);
   return (
     <div className="growth">
       <div className="segmented day-segs" role="tablist">
@@ -39,8 +43,8 @@ export default function OperationsPage({ schoolId }: { schoolId: string }) {
       {seg === "overview" && <OpsOverviewTab schoolId={schoolId} go={pick} />}
       {seg === "helpdesk" && <HelpdeskBoard schoolId={schoolId} manager />}
       {seg === "gate" && <GateBoard schoolId={schoolId} />}
-      {seg === "sickbay" && <ClinicBoard schoolId={schoolId} />}
-      {seg === "incidents" && <IncidentsBoard schoolId={schoolId} />}
+      {seg === "sickbay" && (can("private.health") ? <ClinicBoard schoolId={schoolId} /> : <AskAccess schoolId={schoolId} right="private.health" what="Medical records" />)}
+      {seg === "incidents" && <>{!can("private.safeguarding") && <AskAccess schoolId={schoolId} right="private.safeguarding" what="Incident reports" />}<IncidentsBoard schoolId={schoolId} /></>}
       {seg === "kitchen" && <KitchenBoard schoolId={schoolId} />}
       {seg === "transport" && <TransportBoard schoolId={schoolId} />}
       {seg === "store" && <StoreBoard schoolId={schoolId} store="main" />}
@@ -60,6 +64,7 @@ function OpsOverviewTab({ schoolId, go }: { schoolId: string; go: (s: Seg) => vo
   const max = Math.max(1, ...o.clinic.trend.map((t) => t.visits));
   return (
     <section className="stack">
+      <OpsSetup schoolId={schoolId} go={go} />
       <div className="stat-strip ops-stats">
         <button className="stat-tile as-button" style={hue("orange")} onClick={() => go("helpdesk")}><Glyph icon="wrench" hue="orange" size={44} /><div className="stat-text"><strong>{open}</strong><span>Open jobs</span><span className="stat-note">{overdue} overdue</span></div></button>
         <button className="stat-tile as-button" style={hue("indigo")} onClick={() => go("gate")}><Glyph icon="shield" hue="indigo" size={44} /><div className="stat-text"><strong>{o.gate.inside}</strong><span>Visitors inside</span><span className="stat-note">{o.gate.out} students out · {o.gate.visitors_today} visitors today</span></div></button>
@@ -106,6 +111,7 @@ function OpsOverviewTab({ schoolId, go }: { schoolId: string; go: (s: Seg) => vo
 }
 
 function TeamsTab({ schoolId }: { schoolId: string }) {
+  const canChange = useCan(schoolId)("operations.change");
   const [desks, setDesks] = useState<Desk[] | null>(null);
   const [editing, setEditing] = useState<Desk | null>(null);
   const load = useCallback(() => { ops.desks(schoolId).then(setDesks).catch(() => {}); }, [schoolId]);
@@ -122,7 +128,7 @@ function TeamsTab({ schoolId }: { schoolId: string }) {
                 <li key={m.user_id}><span className="who-inline"><Avatar name={m.name ?? "?"} size={30} /><span><strong>{m.name}</strong><span className="muted small block">{m.job_title}</span></span></span>
                   {m.lead && <span className="hue-chip" style={hue(d.hue)}>Lead</span>}</li>))}</ul>
             )}
-            <div className="row"><a className="text-link" href={href({ page: "desk", school: schoolId, desk: d.key })}>Open desk</a><span className="grow" /><button className="with-icon" onClick={() => setEditing(d)}><Icon name="edit" size={15} />Change</button></div>
+            <div className="row"><a className="text-link" href={href({ page: "desk", school: schoolId, desk: d.key })}>Open desk</a><span className="grow" />{canChange && <button className="with-icon" onClick={() => setEditing(d)}><Icon name="edit" size={15} />Change</button>}</div>
           </section>
         ))}
       </div>
@@ -174,5 +180,44 @@ export function DeskPage({ me, onLogout, schoolId, desk }: { me: Me; onLogout: (
           : <HelpdeskBoard schoolId={schoolId} desk={desk} />}
       </div>
     </Layout>
+  );
+}
+
+
+// ---------- Getting operations set up ----------
+
+interface SetupStep { key: string; label: string; icon: string; done: boolean; optional?: boolean; detail: string; hint: string; go?: string; tab?: string }
+
+function OpsSetup({ schoolId, go }: { schoolId: string; go: (s: Seg) => void }) {
+  const [st, setSt] = useState<{ steps: SetupStep[]; done: number; total: number } | null>(null);
+  const [open, setOpen] = useState<boolean | null>(null);
+  useEffect(() => { api.raw<{ steps: SetupStep[]; done: number; total: number }>("GET", `/api/schools/${schoolId}/ops-setup`).then(setSt).catch(() => {}); }, [schoolId]);
+  if (!st) return null;
+  const finished = st.done >= st.total;
+  const show = open ?? !finished;
+  const pct = Math.round((st.done / Math.max(1, st.total)) * 100);
+  return (
+    <section className={`card g-card ops-setup${finished ? " finished" : ""}`} style={hue(finished ? "green" : "violet")}>
+      <button className="setup-head" onClick={() => setOpen(!show)} aria-expanded={show}>
+        <Glyph icon={finished ? "circle-check" : "rocket"} hue={finished ? "green" : "violet"} size={36} />
+        <span className="grow"><strong>{finished ? "Operations are set up" : "Set up operations, step by step"}</strong>
+          <small>{st.done} of {st.total} done{finished ? "" : ". Each step ticks itself off when it's in place."}</small></span>
+        <span className="setup-ring" style={{ ["--pct" as string]: `${pct}%` }}><b>{pct}%</b></span>
+        <Icon name={show ? "chevron-up" : "chevron-down"} size={18} />
+      </button>
+      {show && (
+        <ol className="setup-steps">
+          {st.steps.map((x, i) => (
+            <li key={x.key} className={x.done ? "done" : x.optional ? "optional" : ""}>
+              <span className="step-n">{x.done ? <Icon name="check" size={15} /> : i + 1}</span>
+              <span className="grow"><strong>{x.label}</strong>{x.optional && !x.done && <span className="hue-chip" style={hue("slate")}>If needed</span>}
+                <small className="block">{x.detail}</small>{!x.done && <small className="block muted">{x.hint}</small>}</span>
+              {!x.done && (x.go ? <button className="with-icon small" onClick={() => go(x.go as Seg)}>Go<Icon name="chevron-right" size={14} /></button>
+                : x.tab ? <a className="button small" href={href({ page: "school", id: schoolId, tab: x.tab as "facilities" })}>Go<Icon name="chevron-right" size={14} /></a> : null)}
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   );
 }

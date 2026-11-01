@@ -40,6 +40,7 @@ export const TAB_LOOK: Record<string, Look> = {
   "staff-day": { icon: "staff-day", hue: "green" },
   growth: { icon: "growth", hue: "lime" },
   operations: { icon: "wrench", hue: "orange" },
+  rights: { icon: "key", hue: "violet" },
 };
 
 export const FACILITY_LOOK: Record<string, Look> = {
@@ -197,7 +198,7 @@ export function sectionLook(name: string, levels: string[]): Look {
 }
 
 export const ROLE_HUE: Record<string, Hue> = {
-  owner: "indigo", head: "violet", it_admin: "teal", vice_principal: "fuchsia", teacher: "blue", class_teacher: "sky", bursar: "green",
+  owner: "indigo", head_of_school: "indigo", head: "violet", it_admin: "teal", vice_principal: "fuchsia", teacher: "blue", class_teacher: "sky", bursar: "green",
   accountant: "green", secretary: "slate", house_parent: "pink", nurse: "red", librarian: "amber", security: "indigo",
   cook: "orange", driver: "amber", cleaner: "teal", board_member: "rose",
 };

@@ -5,6 +5,7 @@ import { errorText } from "./api";
 import type { Item, PersonOption } from "./structureApi";
 import { Empty, Field, Glyph, hue, IconButton, Modal } from "./ui";
 import Icon from "./Icon";
+import { useCanChange } from "./rightsApi";
 import type { Look } from "./look";
 
 /** How a row looks: its icon and colour. A colour (e.g. a house colour) beats the hue. */
@@ -183,6 +184,7 @@ export default function RecordEditor({
   const [items, setItems] = useState<Item[] | null>(null);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<Item | "new" | null>(null);
+  const canChange = useCanChange();
 
   const load = useCallback(() => {
     api.list().then((list) => { setItems(list); onItems?.(list); }).catch((err) => setError(errorText(err)));
@@ -216,8 +218,8 @@ export default function RecordEditor({
           {intro && <p className="muted small editor-intro">{intro}</p>}
         </div>
         <div className="row wrap">
-          {actions?.(changed)}
-          <button className="primary with-icon" onClick={() => setEditing("new")}><Icon name="plus" size={16} />Add {noun}</button>
+          {canChange && actions?.(changed)}
+          {canChange && <button className="primary with-icon" onClick={() => setEditing("new")}><Icon name="plus" size={16} />Add {noun}</button>}
         </div>
       </div>
       {error && <p className="error">{error}</p>}
@@ -241,10 +243,10 @@ export default function RecordEditor({
                   <li key={it.id} className="item" style={l ? hue(l.hue, l.colour) : undefined}>
                     {lead ? lead(it) : l && <Glyph icon={l.icon} hue={l.hue} colour={l.colour} size={layout === "cards" ? 52 : 42} />}
                     <div className="item-body">{summary(it)}</div>
-                    <div className="item-actions">
+                    {canChange && <div className="item-actions">
                       <IconButton icon="edit" label={`Edit ${name}`} onClick={() => setEditing(it)} />
                       <IconButton icon="trash" label={`Delete ${name}`} danger onClick={() => remove(it)} />
-                    </div>
+                    </div>}
                   </li>
                 );
               })}

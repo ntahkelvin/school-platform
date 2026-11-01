@@ -21,6 +21,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.access import not_found
+from app.core import rights
 from app.api.deps import current_user
 from app.api.staff_day import WAT, now_wat, runs, school_for, staff_ids
 from app.core.db import get_db
@@ -37,10 +38,10 @@ DESKS = {
                     "words": ["electric", "plumb", "carpent", "cleaner", "maintenance", "works", "handyman", "gardener", "mason", "welder", "painter"]},
     "it": {"label": "IT support", "icon": "laptop", "hue": "blue", "words": ["ict", "computer", "it officer", "it support", "network"]},
     "store": {"label": "Store", "icon": "store", "hue": "amber", "words": ["store", "procurement", "supplies"]},
-    "transport": {"label": "Transport", "icon": "bus", "hue": "teal", "words": ["driver", "transport"]},
+    "transport": {"label": "Transport", "icon": "bus", "hue": "teal", "words": ["driver", "transport", "bus attendant"]},
     "gate": {"label": "Gate and security", "icon": "shield", "hue": "indigo", "words": ["security", "gate", "porter", "guard"]},
     "sickbay": {"label": "Sick bay", "icon": "stethoscope", "hue": "rose", "words": ["nurse", "matron", "health", "clinic", "doctor"]},
-    "kitchen": {"label": "Kitchen", "icon": "cooking-pot", "hue": "lime", "words": ["cook", "kitchen", "caterer", "catering", "steward", "dining"]},
+    "kitchen": {"label": "Kitchen", "icon": "cooking-pot", "hue": "lime", "words": ["cook", "chef", "kitchen", "caterer", "catering", "steward", "dining"]},
 }
 CATEGORIES = {
     "repair": {"label": "Something broken", "desk": "maintenance", "icon": "hammer", "hint": "Furniture, doors, windows, locks, roofs"},
@@ -69,38 +70,55 @@ OUTCOMES = {"class": "Back to class", "rest": "Rested, then class", "sick_bay": 
 # ---------- Desks (teams) ----------
 
 def ensure_desks(db: Session, school_id: uuid.UUID) -> None:
-    """Fill any desk that has nobody yet from job titles (a Security Officer goes to the gate, a Nurse to the sick bay...)."""
-    have = set(db.scalars(select(DeskMember.desk).where(DeskMember.school_id == school_id).distinct()))
-    missing = [k for k in DESKS if k not in have]
-    if not missing:
-        return
+    """Put staff on desks by job title (a Security Officer on the gate, a Nurse in the sick bay, a Cook in the kitchen...).
+    Runs whenever desks are looked at, so new staff join their team straight away. Anyone a manager took off a desk stays off."""
+    have = {(r.desk, r.user_id) for r in db.scalars(select(DeskMember).where(DeskMember.school_id == school_id))}
     for p in db.scalars(select(StaffProfile).where(StaffProfile.school_id == school_id, StaffProfile.user_id.in_(staff_ids(db, school_id) or {uuid.uuid4()}))):
         job = (p.job_title or "").lower()
-        for key in missing:
-            if any(w in job for w in DESKS[key]["words"]):
+        for key, d in DESKS.items():
+            if (key, p.user_id) not in have and any(w in job for w in d["words"]):
                 db.add(DeskMember(school_id=school_id, desk=key, user_id=p.user_id, lead=job.startswith("head") or "chief" in job or "supervisor" in job))
+                have.add((key, p.user_id))
+    from app.models import Branch, BusRoute, Vehicle
+    crew = set(db.scalars(select(Vehicle.driver_user_id).join(Branch, Branch.id == Vehicle.branch_id).where(
+        Branch.school_id == school_id, Vehicle.driver_user_id.is_not(None))))
+    for r in db.scalars(select(BusRoute).where(BusRoute.school_id == school_id)):
+        crew |= {x for x in (r.driver_id, r.attendant_id) if x}
+    for uid in crew:
+        if ("transport", uid) not in have:
+            db.add(DeskMember(school_id=school_id, desk="transport", user_id=uid))
+            have.add(("transport", uid))
     db.flush()
 
 
 def desk_members(db: Session, school_id: uuid.UUID, desk: str) -> set[uuid.UUID]:
-    ensure_desks(db, school_id)
-    return set(db.scalars(select(DeskMember.user_id).where(DeskMember.school_id == school_id, DeskMember.desk == desk)))
+    return set(db.scalars(select(DeskMember.user_id).where(DeskMember.school_id == school_id, DeskMember.desk == desk, DeskMember.removed.is_(False))))
 
 
 def my_desks(db: Session, user: User, school: School) -> list[str]:
-    if runs(user, school):
-        return list(DESKS)
+    if runs(user, school, "operations"):
+        return [d for d in DESKS if d != "sickbay" or rights.has(user, school, "private.health", db)]
     ensure_desks(db, school.id)
-    return list(db.scalars(select(DeskMember.desk).where(DeskMember.school_id == school.id, DeskMember.user_id == user.id)))
+    return list(db.scalars(select(DeskMember.desk).where(DeskMember.school_id == school.id, DeskMember.user_id == user.id, DeskMember.removed.is_(False))))
 
 
-def on_desk(db: Session, user: User, school: School, desk: str) -> bool:
-    return runs(user, school) or user.id in desk_members(db, school.id, desk)
+def on_desk(db: Session, user: User, school: School, desk: str, what: str = "", level: str | None = None) -> bool:
+    """Works on this desk, or may run operations. The sick bay holds medical records, so it needs the
+    medical-records right (the nurses always have it); its use through temporary access is reported."""
+    if desk == "sickbay":
+        if user.id in desk_members(db, school.id, desk) and not rights.acting(user):
+            return True
+        return rights.use_private(db, user, school, "health", what)
+    if user.id in desk_members(db, school.id, desk):
+        return not (level == "change" and rights.acting(user))
+    return runs(user, school, "operations", level)
 
 
-def need_desk(db: Session, user: User, school_id: uuid.UUID, desk: str) -> School:
+def need_desk(db: Session, user: User, school_id: uuid.UUID, desk: str, what: str = "") -> School:
     s = school_for(db, user, school_id)
-    if not on_desk(db, user, s, desk):
+    if not on_desk(db, user, s, desk, what):
+        if desk == "sickbay":
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "private:health|Medical records are private. Ask the principal for access.")
         raise HTTPException(status.HTTP_403_FORBIDDEN, f"Only the {DESKS[desk]['label'].lower()} team can do this")
     return s
 
@@ -145,7 +163,7 @@ def desks(school_id: uuid.UUID, user: User = Depends(current_user), db: Session 
     school_for(db, user, school_id)
     ensure_desks(db, school_id)
     nm = Names(db, school_id)
-    rows = list(db.scalars(select(DeskMember).where(DeskMember.school_id == school_id)))
+    rows = list(db.scalars(select(DeskMember).where(DeskMember.school_id == school_id, DeskMember.removed.is_(False))))
     db.commit()
     return [{"key": k, **{x: d[x] for x in ("label", "icon", "hue")},
              "members": sorted([{**nm.card(r.user_id), "lead": r.lead} for r in rows if r.desk == k], key=lambda x: (not x["lead"], x["name"] or ""))}
@@ -166,11 +184,13 @@ def set_desk(school_id: uuid.UUID, desk: str, data: DeskIn, user: User = Depends
     ids = staff_ids(db, school_id)
     if not set(data.user_ids) <= ids:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Everyone on a desk must be on the staff")
-    for r in db.scalars(select(DeskMember).where(DeskMember.school_id == school_id, DeskMember.desk == desk)):
-        db.delete(r)
-    db.flush()
+    rows = {r.user_id: r for r in db.scalars(select(DeskMember).where(DeskMember.school_id == school_id, DeskMember.desk == desk))}
+    keep = set(data.user_ids)
+    for uid, r in rows.items():
+        r.removed, r.lead = uid not in keep, uid in data.lead_ids
     for uid in dict.fromkeys(data.user_ids):
-        db.add(DeskMember(school_id=school_id, desk=desk, user_id=uid, lead=uid in data.lead_ids))
+        if uid not in rows:
+            db.add(DeskMember(school_id=school_id, desk=desk, user_id=uid, lead=uid in data.lead_ids))
     db.commit()
     return desks(school_id, user, db)
 
@@ -636,9 +656,13 @@ class IncidentIn(BaseModel):
 
 
 def sees_incident(db: Session, user: User, school: School, i: Incident) -> bool:
-    if runs(user, school) or i.reported_by_id == user.id or i.assigned_to_id == user.id:
+    if i.reported_by_id == user.id or i.assigned_to_id == user.id:
         return True
-    if i.kind in ("security", "theft", "damage", "fire") and on_desk(db, user, school, "gate"):
+    if user.__dict__.get("_safeguarding") is None:
+        user.__dict__["_safeguarding"] = rights.use_private(db, user, school, "safeguarding")
+    if user.__dict__["_safeguarding"]:
+        return True
+    if i.kind in ("security", "theft", "damage", "fire") and user.id in desk_members(db, school.id, "gate"):
         return True
     return i.kind in ("health", "injury") and on_desk(db, user, school, "sickbay")
 
@@ -650,7 +674,7 @@ def incident_out(i: Incident, nm: Names, db: Session, user: User, school: School
             "staff": [nm.card(uuid.UUID(x)) for x in i.staff_ids], "others": i.others, "action_taken": i.action_taken,
             "reported_by": nm.card(i.reported_by_id), "assigned_to": nm.card(i.assigned_to_id), "status": i.status, "outcome": i.outcome,
             "parents_informed": i.parents_informed, "notes": i.notes, "created_at": i.created_at.isoformat(),
-            "can_manage": runs(user, school) or i.assigned_to_id == user.id}
+            "can_manage": i.assigned_to_id == user.id or (rights.has(user, school, "private.safeguarding", db) and not rights.acting(user))}
 
 
 @router.post("/schools/{school_id}/incidents", status_code=201)
@@ -704,7 +728,7 @@ def update_incident(iid: uuid.UUID, data: IncidentUpdate, user: User = Depends(c
     school = school_for(db, user, i.school_id)
     if not sees_incident(db, user, school, i):
         raise not_found("Incident")
-    manage = runs(user, school) or i.assigned_to_id == user.id
+    manage = i.assigned_to_id == user.id or rights.use_private(db, user, school, "safeguarding", f"incident #{i.number}")
     changes = data.model_dump(exclude_unset=True)
     note = changes.pop("note", None)
     if changes and not manage:
@@ -748,7 +772,7 @@ def get_health(student_id: uuid.UUID, user: User = Depends(current_user), db: Se
         raise not_found("Student")
     school = school_for(db, user, s.school_id)
     h = db.scalar(select(StudentHealth).where(StudentHealth.student_id == student_id))
-    nurse = on_desk(db, user, school, "sickbay")
+    nurse = on_desk(db, user, school, "sickbay", f"{s.first_name} {s.last_name}")
     out = health_out(h)
     if out and not nurse:
         out["notes"] = None   # the nurse's own notes stay in the sick bay
@@ -764,7 +788,7 @@ def put_health(student_id: uuid.UUID, data: HealthIn, user: User = Depends(curre
     s = db.get(Student, student_id)
     if not s:
         raise not_found("Student")
-    need_desk(db, user, s.school_id, "sickbay")
+    need_desk(db, user, s.school_id, "sickbay", f"{s.first_name} {s.last_name}")
     h = db.scalar(select(StudentHealth).where(StudentHealth.student_id == student_id))
     if not h:
         h = StudentHealth(student_id=student_id)
@@ -1010,6 +1034,31 @@ def my_ops(school_id: uuid.UUID, user: User = Depends(current_user), db: Session
     waiting_passes = db.scalar(select(func.count()).select_from(GatePass).where(GatePass.school_id == school_id, GatePass.status == "requested")) if approver else 0
     form = bool(db.scalar(select(SchoolClass.id).where(SchoolClass.form_teacher_id == user.id).limit(1)))
     db.commit()
-    return {"desks": [{"key": d, **{x: DESKS[d][x] for x in ("label", "icon", "hue")}, "open": desk_open.get(d, 0)} for d in member_desks],
+    from app.api.logistics import desk_summary
+    info = {d: desk_summary(db, user, school, d) for d in member_desks}
+    today = now_wat().date()
+    start = datetime.combine(today, time(0), tzinfo=WAT)
+    if "gate" in member_desks:
+        inside = db.scalar(select(func.count()).select_from(Visitor).where(Visitor.school_id == school_id, Visitor.time_out.is_(None),
+                                                                           Visitor.time_in >= start - timedelta(days=1))) or 0
+        info["gate"] = {"big": str(inside), "line": f"visitor{'s' if inside != 1 else ''} inside now", "more": "Visitors' book and exit passes", "alerts": 0}
+    if "sickbay" in member_desks:
+        seen = db.scalar(select(func.count()).select_from(ClinicVisit).where(ClinicVisit.school_id == school_id, ClinicVisit.seen_at >= start)) or 0
+        info["sickbay"] = {"big": str(seen), "line": f"visit{'s' if seen != 1 else ''} today", "more": "Visits, students lying in and medicine stock", "alerts": 0}
+    db.commit()
+    return {"desks": [{"key": d, **{x: DESKS[d][x] for x in ("label", "icon", "hue")}, "open": desk_open.get(d, 0), "info": info.get(d)}
+                      for d in member_desks],
             "my_open": mine_open, "to_rate": to_rate, "assigned": assigned, "can_request_pass": approver or form,
             "can_approve_pass": approver, "passes_waiting": waiting_passes or 0}
+
+
+@router.get("/schools/{school_id}/places")
+def places(school_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Rooms and buildings anyone on the staff can pick when reporting a problem, so repairs build up a history per place."""
+    from app.models import Branch, Hostel
+    school_for(db, user, school_id)
+    out = [{"id": str(f.id), "name": f.name, "kind": f.kind.value} for f in db.scalars(
+        select(Facility).join(Branch, Branch.id == Facility.branch_id).where(Branch.school_id == school_id).order_by(Facility.name))]
+    out += [{"id": None, "name": h.name, "kind": "hostel"} for h in db.scalars(
+        select(Hostel).join(Branch, Branch.id == Hostel.branch_id).where(Branch.school_id == school_id).order_by(Hostel.name))]
+    return out
