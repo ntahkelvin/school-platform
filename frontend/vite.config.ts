@@ -6,11 +6,14 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    allowedHosts: true,   // so a phone can reach it through the share link
     proxy: { "/api": "http://127.0.0.1:8000" },
   },
   // "npm run preview" serves the finished build, the way the live app will run.
   preview: {
     port: 4173,
+    host: true,
+    allowedHosts: true,
     proxy: { "/api": "http://127.0.0.1:8000" },
   },
 });

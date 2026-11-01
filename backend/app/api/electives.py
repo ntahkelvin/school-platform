@@ -303,6 +303,8 @@ def put_choice(student_id: uuid.UUID, subject_id: uuid.UUID, data: ChoiceIn,
         # A teacher may add to, or take out of, their own group only.
         current = db.scalar(select(StudentElective).where(StudentElective.student_id == student.id,
                                                           StudentElective.subject_id == subject.id))
+        if group and current and current.group_id and current.group_id != group.id:
+            forbid("This student already has another teacher for this subject")
         own = (group and group.teacher_user_id == user.id) or (
             not data.taking and current and current.group_id and db.get(TeachingGroup, current.group_id).teacher_user_id == user.id)
         if not own:

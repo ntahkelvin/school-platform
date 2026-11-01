@@ -37,6 +37,9 @@ export const TAB_LOOK: Record<string, Look> = {
   imports: { icon: "layers", hue: "teal" },
   logins: { icon: "shield-check", hue: "indigo" },
   teaching: { icon: "presentation", hue: "fuchsia" },
+  "staff-day": { icon: "staff-day", hue: "green" },
+  growth: { icon: "growth", hue: "lime" },
+  operations: { icon: "wrench", hue: "orange" },
 };
 
 export const FACILITY_LOOK: Record<string, Look> = {

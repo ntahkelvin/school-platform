@@ -8,6 +8,12 @@ import RegisterPage from "./RegisterPage";
 import OrgPage from "./OrgPage";
 import BoardView from "./BoardView";
 import { ChoosePassword } from "./Logins";
+import StaffHome from "./StaffHome";
+import StaffRecordPage from "./StaffRecord";
+import IdCardsPage from "./IdCards";
+import KioskPage from "./Kiosk";
+import PassportPage from "./Passport";
+import { DeskPage } from "./Operations";
 import { go, useRoute, type BranchTab } from "./router";
 import { cache, isNetworkError } from "./offline";
 
@@ -39,6 +45,8 @@ export default function App() {
     window.location.hash = "";
   }
 
+  // The gate kiosk works without anyone logged in.
+  if (route.page === "kiosk") return <KioskPage schoolId={route.school} token={route.token} />;
   if (checking) return <div className="center muted">Loading…</div>;
   if (!me) return <Login onLoggedIn={setMe} />;
 
@@ -49,7 +57,22 @@ export default function App() {
   // Board members who don't run a school only ever see the read-only board view.
   const isOwner = me.memberships.some((m) => m.role === "owner");
   const isBoard = me.memberships.some((m) => m.role === "board_member");
-  if (!isOwner && isBoard) return <BoardView {...common} />;
+  const STAFF = ["head", "vice_principal", "it_admin", "bursar", "teacher", "house_parent", "support"];
+  const isStaff = me.memberships.some((m) => STAFF.includes(m.role));
+  const runs = new Set(me.memberships.filter((m) => ["head", "vice_principal", "it_admin"].includes(m.role)).map((m) => m.school_id));
+  if (!isOwner && !isStaff && isBoard) return <BoardView {...common} />;
+  if (!isOwner && isStaff) {
+    // Staff: their own portal; principals, vice principals and the IT team can also open their school's pages.
+    if (route.page === "school" && runs.has(route.id)) return <SchoolPage key={route.id} {...common} schoolId={route.id} tab={route.tab} />;
+    if (route.page === "register") return <RegisterPage key={`${route.kind}${route.id}${route.date}`} {...common} kind={route.kind} id={route.id} date={route.date} />;
+    if (route.page === "student" && runs.size) return <StudentPage key={route.id} {...common} studentId={route.id} />;
+    if (route.page === "board" && isBoard) return <BoardView {...common} />;
+    if (route.page === "staff-record") return <StaffRecordPage key={route.id} {...common} schoolId={route.school} userId={route.id} />;
+    if (route.page === "staff-cards") return <IdCardsPage key={`${route.school}${route.id}`} {...common} schoolId={route.school} userId={route.id} />;
+    if (route.page === "passport") return <PassportPage key={route.id} {...common} schoolId={route.school} userId={route.id} />;
+    if (route.page === "desk") return <DeskPage key={route.desk} {...common} schoolId={route.school} desk={route.desk} />;
+    return <StaffHome {...common} />;
+  }
   switch (route.page) {
     case "org":
       return <OrgPage key={route.id} {...common} orgId={route.id} />;
@@ -64,6 +87,16 @@ export default function App() {
       return <RegisterPage key={`${route.kind}${route.id}${route.date}`} {...common} kind={route.kind} id={route.id} date={route.date} />;
     case "student":
       return <StudentPage key={route.id} {...common} studentId={route.id} />;
+    case "staff":
+      return <StaffHome {...common} />;
+    case "staff-record":
+      return <StaffRecordPage key={route.id} {...common} schoolId={route.school} userId={route.id} />;
+    case "staff-cards":
+      return <IdCardsPage key={`${route.school}${route.id}`} {...common} schoolId={route.school} userId={route.id} />;
+    case "desk":
+      return <DeskPage key={route.desk} {...common} schoolId={route.school} desk={route.desk} />;
+    case "passport":
+      return <PassportPage key={route.id} {...common} schoolId={route.school} userId={route.id} />;
     default:
       return <Dashboard {...common} />;
   }

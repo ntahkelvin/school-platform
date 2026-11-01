@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>School Platform on Proxmox</title>
+<style>
+:root { --bg:#f5f7fb; --card:#fff; --text:#1c2430; --muted:#5d6b7c; --line:#e3e8ef; --blue:#2563eb; --green:#16a34a; --amber:#d97706; --red:#dc2626; --violet:#7c3aed; --teal:#0d9488; --code:#0f172a; --codetext:#e2e8f0; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0e1116; --card:#171c23; --text:#e7ecf2; --muted:#9aa6b4; --line:#2a323d; --code:#05080d; } }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:17px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 24px 16px 80px; }
+header { background: linear-gradient(120deg,#166534,#0d9488 60%,#2563eb); color:#fff; border-radius: 24px; padding: 28px 24px; margin-bottom: 20px; }
+header h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.2; }
+header p { margin: 0; opacity: .92; }
+.progress { margin-top: 14px; height: 10px; background: rgba(255,255,255,.25); border-radius: 99px; overflow: hidden; }
+.progress i { display:block; height:100%; width:0; background:#fff; border-radius:99px; transition: width .3s; }
+.progress-text { font-size: 14px; margin-top: 6px; opacity: .9; }
+.part { margin: 30px 0 12px; display:flex; align-items:center; gap:12px; }
+.part .badge { flex:none; width:44px; height:44px; border-radius:14px; display:grid; place-items:center; color:#fff; font-weight:800; font-size:20px; }
+.part h2 { margin:0; font-size: 23px; }
+.part p { margin:0; color: var(--muted); font-size: 15px; }
+.step { background: var(--card); border:1px solid var(--line); border-radius: 18px; padding: 16px 18px; margin: 10px 0; display:grid; grid-template-columns: 34px 1fr; gap: 4px 14px; }
+.step.done { opacity: .55; }
+.step input[type=checkbox] { width: 26px; height: 26px; margin: 3px 0 0; accent-color: var(--green); cursor: pointer; }
+.step h3 { margin: 0; font-size: 18px; }
+.step .body { grid-column: 2; }
+.step p { margin: 6px 0; }
+.step ul, .step ol { margin: 6px 0; padding-left: 22px; }
+.code { position: relative; background: var(--code); color: var(--codetext); border-radius: 12px; padding: 12px 70px 12px 14px; margin: 8px 0; font: 15px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space: pre-wrap; word-break: break-all; }
+.code button { position:absolute; top:8px; right:8px; border:0; border-radius:8px; padding:5px 10px; background:#334155; color:#fff; font-size:13px; cursor:pointer; }
+.code button.ok { background: var(--green); }
+.see { border-left: 4px solid var(--green); background: color-mix(in srgb, var(--green) 9%, var(--card)); padding: 8px 12px; border-radius: 0 10px 10px 0; margin: 8px 0; font-size: 15px; }
+.warn { border-left: 4px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--card)); padding: 8px 12px; border-radius: 0 10px 10px 0; margin: 8px 0; font-size: 15px; }
+.where { display:inline-block; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 2px 9px; border-radius: 99px; color:#fff; margin-bottom: 4px; }
+.w-laptop { background: var(--blue); } .w-proxmox { background: var(--amber); } .w-server { background: var(--violet); } .w-phone { background: var(--teal); }
+.step .body, .step h3 { min-width: 0; }
+td, th { overflow-wrap: anywhere; }
+@media (max-width: 520px) { .step { grid-template-columns: 26px 1fr; padding: 14px 12px; gap: 4px 10px; } .step .body { grid-column: 1 / -1; } td:first-child { width: 34%; } }
+kbd { background: var(--card); border:1px solid var(--line); border-bottom-width: 3px; border-radius: 6px; padding: 0 6px; font-size: 14px; font-family: inherit; }
+b.ui { background: color-mix(in srgb, var(--blue) 12%, var(--card)); padding: 0 6px; border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+td, th { border-bottom: 1px solid var(--line); text-align: left; padding: 6px 8px; vertical-align: top; }
+.legend { display:flex; flex-wrap:wrap; gap:8px; margin: 12px 0 0; font-size: 14px; }
+.reset { background:none; border:0; color: inherit; text-decoration: underline; cursor:pointer; font-size: 14px; opacity: .9; }
+@media print { .code button, .reset { display:none; } .step { break-inside: avoid; } header { color:#000; background:none; border:1px solid #ccc; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Put the School Platform on your Proxmox server</h1>
+  <p>Follow the steps in order. Tick each box when it's done. Grey boxes are things to <b>type</b> (or press <b>Copy</b> and paste).</p>
+  <div class="progress"><i id="bar"></i></div>
+  <div class="progress-text"><span id="count">0</span> of <span id="total">0</span> steps done · <button class="reset" onclick="resetAll()">start again</button></div>
+  <div class="legend">
+    <span class="where w-laptop">Laptop</span> = your Windows laptop
+    <span class="where w-proxmox">Proxmox</span> = the Proxmox web page
+    <span class="where w-server">Server</span> = the new Ubuntu server
+    <span class="where w-phone">Phone</span> = any phone
+  </div>
+</header>
+
+<p><b>What you need:</b> the Proxmox computer plugged in to your router, your Windows laptop on the same Wi-Fi, the file <b>school-platform-server.zip</b> in your laptop's Downloads folder, and about 45 minutes.</p>
+
+<!-- PART 1 -->
+<div class="part"><span class="badge" style="background:var(--amber)">1</span><div><h2>Open Proxmox</h2><p>Get into the Proxmox control page from your laptop.</p></div></div>
+
+<div class="step"><input type="checkbox"><h3>Turn on the Proxmox computer</h3><div class="body">
+<span class="where w-proxmox">Proxmox computer</span>
+<p>Press the power button. Wait 2 minutes. If it has a screen, it shows a message like:</p>
+<div class="see">Please use your web browser to configure this server – connect to: <b>https://192.168.1.50:8006/</b></div>
+<p>Write that address down. (Yours will have different numbers.)</p>
+<p class="warn">No screen? Log in to your router's page and look for a device called <b>pve</b>, or use the address you used last time.</p>
+</div></div>
+
+<div class="step"><input type="checkbox"><h3>Open the Proxmox page on your laptop</h3><div class="body">
+<span class="where w-laptop">Laptop</span>
+<p>Open Chrome or Edge and type the address, for example <b>https://192.168.1.50:8006</b></p>
+<p>You'll see a warning “Your connection is not private”. That's normal for your own server. Click <b class="ui">Advanced</b> then <b class="ui">Continue to 192.168.1.50 (unsafe)</b>.</p>
+<p>Log in: User name <b>root</b>, your Proxmox password, Realm <b>Linux PAM</b>. If a box says “No valid subscription”, click <b class="ui">OK</b>.</p>
+</div></div>
+
+<!-- PART 2 -->
+<div class="part"><span class="badge" style="background:var(--amber)">2</span><div><h2>Download Ubuntu into Proxmox</h2><p>Ubuntu is the system the platform runs on.</p></div></div>
+
+<div class="step"><input type="checkbox"><h3>Download the Ubuntu Server file</h3><div class="body">
+<span class="where w-proxmox">Proxmox</span>
+<ol>
+<li>On the left, click the little arrow next to your server name (usually <b>pve</b>).</li>
+<li>Click <b class="ui">local (pve)</b>.</li>
+<li>In the middle, click <b class="ui">ISO Images</b>, then <b class="ui">Download from URL</b>.</li>
+<li>In <b>URL</b>, paste this, then click <b class="ui">Query URL</b>:</li>
+</ol>
+<div class="code">https://releases.ubuntu.com/noble/ubuntu-24.04.5-live-server-amd64.iso</div>
+<ol start="5"><li>Click <b class="ui">Download</b>. Wait until it says <b>TASK OK</b> (about 3–10 minutes). Close that box.</li></ol>
+<p class="warn">If it says the file isn't found, open <b>releases.ubuntu.com/noble</b> in your browser, find the file ending in <b>live-server-amd64.iso</b>, right-click it, choose <b>Copy link address</b> and paste that instead.</p>
+</div></div>
+
+<!-- PART 3 -->
+<div class="part"><span class="badge" style="background:var(--amber)">3</span><div><h2>Make the virtual computer</h2><p>A computer inside your Proxmox computer, just for the school platform.</p></div></div>
+
+<div class="step"><input type="checkbox"><h3>Click “Create VM” and fill in each tab</h3><div class="body">
+<span class="where w-proxmox">Proxmox</span>
+<p>Top right, click the blue <b class="ui">Create VM</b> button. Then on each tab:</p>
+<table>
+<tr><th>Tab</th><th>What to do</th></tr>
+<tr><td>General</td><td>Name: <b>school</b>. Click Next.</td></tr>
+<tr><td>OS</td><td>ISO image: choose <b>ubuntu-24.04.5-live-server-amd64.iso</b>. Click Next.</td></tr>
+<tr><td>System</td><td>Leave as it is. Next.</td></tr>
+<tr><td>Disks</td><td>Disk size: <b>40</b>. Next.</td></tr>
+<tr><td>CPU</td><td>Cores: <b>2</b>. Type: <b>host</b>. Next.</td></tr>
+<tr><td>Memory</td><td>Memory: <b>4096</b>. Next.</td></tr>
+<tr><td>Network</td><td>Leave as it is. Next.</td></tr>
+<tr><td>Confirm</td><td>Tick <b>Start after created</b>. Click <b class="ui">Finish</b>.</td></tr>
+</table>
+</div></div>
+
+<div class="step"><input type="checkbox"><h3>Make it start by itself</h3><div class="body">
+<span class="where w-proxmox">Proxmox</span>
+<p>On the left, click your new VM <b>100 (school)</b>. Click <b class="ui">Options</b>, double-click <b>Start at boot</b>, tick it, click <b class="ui">OK</b>.</p>
+<div class="see">Now if the power goes off, the platform comes back on its own when Proxmox restarts.</div>
+</div></div>
+
+<!-- PART 4 -->
+<div class="part"><span class="badge" style="background:var(--violet)">4</span><div><h2>Install Ubuntu on it</h2><p>You only do this once. Use the keyboard: arrow keys to move, <kbd>Space</kbd> to tick, <kbd>Enter</kbd> to choose.</p></div></div>
+
+<div class="step"><input type="checkbox"><h3>Open the VM's screen</h3><div class="body">
+<span class="where w-proxmox">Proxmox</span>
+<p>Click <b>100 (school)</b> on the left, then <b class="ui">Console</b>. Click inside the black screen so your keyboard works there.</p>
+</div></div>
+
+<div class="step"><input type="checkbox"><h3>Answer the Ubuntu installer</h3><div class="body">
+<span class="where w-server">Server console</span>
+<table>
+<tr><th>Screen</th><th>What to choose</th></tr>
+<tr><td>Language</td><td><b>English</b></td></tr>
+<tr><td>Installer update</td><td><b>Continue without updating</b></td></tr>
+<tr><td>Keyboard</td><td><b>English (UK)</b>, then Done</td></tr>
+<tr><td>Type of install</td><td><b>Ubuntu Server</b>, then Done</td></tr>
+<tr><td>Network</td><td>It shows an address like <b>192.168.1.60/24</b>. <b>Write down 192.168.1.60</b> (without the /24). Done.</td></tr>
+<tr><td>Proxy</td><td>Leave empty. Done.</td></tr>
+<tr><td>Mirror</td><td>Wait for “passed”, then Done.</td></tr>
+<tr><td>Storage</td><td>Keep <b>Use an entire disk</b>. Move to <b>Set up this disk as an LVM group</b> and press <kbd>Space</kbd> to <b>un-tick</b> it (so you get the whole 40 GB). Done, Done, then <b>Continue</b>.</td></tr>
+<tr><td>Profile</td><td>Your name: <b>Kel</b>. Server name: <b>school</b>. Username: <b>kel</b>. Password: one you'll remember (write it down). Done.</td></tr>
+<tr><td>Ubuntu Pro</td><td><b>Skip for now</b>. Continue.</td></tr>
+<tr><td>SSH</td><td>Press <kbd>Space</kbd> to tick <b>Install OpenSSH server</b>. Done.</td></tr>
+<tr><td>Featured snaps</td><td>Don't tick anything. Done.</td></tr>
+</table>
+<p>Now it installs. Wait until it says <b>Installation complete!</b> (10–15 minutes). Choose <b class="ui">Reboot Now</b>.</p>
+<p>If it says <b>“Please remove the installation medium, then press ENTER”</b>, just press <kbd>Enter</kbd>.</p>
+</div></div>
+
+<div class="step"><input type="checkbox"><h3>Check you can log in</h3><div class="body">
+<span class="where w-server">Server console</span>
+<p>Wait for <b>school login:</b>. Type <b>kel</b>, press <kbd>Enter</kbd>, type your password (you won't see it as you type, that's normal), press <kbd>Enter</kbd>.</p>
+<div class="see">You see <b>kel@school:~$</b>. You're in. You can close the console now; from here on you use your laptop.</div>
+</div></div>
+
+<!-- PART 5 -->
+<div class="part"><span class="badge" style="background:var(--blue)">5</span><div><h2>Send the platform from your laptop</h2><p>Copy the platform and your test data to the server.</p></div></div>
+
+<div class="step"><input type="checkbox"><h3>Open Ubuntu (WSL) on your laptop</h3><div class="body">
+<span class="where w-laptop">Laptop</span>
+<p>Click Start, type <b>Ubuntu</b>, open it. This is the same black window you use for the platform.</p>
+</div></div>
+
+<div class="step"><input type="checkbox"><h3>Save your laptop's data into a file</h3><div class="body">
+<span class="where w-laptop">Laptop (Ubuntu)</span>
+<p>Copy these lines, paste them (right-click pastes), press <kbd>Enter</kbd>. Type your Ubuntu password if asked.</p>
+<div class="code">cd ~
+sudo service postgresql start
+sudo -u postgres pg_dump school_platform | gzip &gt; laptop-data.sql.gz
+cp /mnt/c/Users/*/Downloads/school-platform-server.zip .
+ls -lh laptop-data.sql.gz school-platform-server.zip</div>
+<div class="see">You see two files listed with their sizes.</div>
+</div></div>
+
+<div class="step"><input type="checkbox"><h3>Copy both files to the server</h3><div class="body">
+<span class="where w-laptop">Laptop (Ubuntu)</span>
+<p>Change <b>192.168.1.60</b> to the address you wrote down in Part 4.</p>
+<div class="code">scp school-platform-server.zip laptop-data.sql.gz kel@192.168.1.60:~</div>
+<p>It asks <b>“Are you sure you want to continue connecting?”</b>: type <b>yes</b> and press <kbd>Enter</kbd>. Then type the server password (from Part 4).</p>
+<div class="see">You see both files go across, each reaching <b>100%</b>.</div>
+</div></div>
+
+<div class="step"><input type="checkbox"><h3>Connect to the server</h3><div class="body">
+<span class="where w-laptop">Laptop (Ubuntu)</span>
+<div class="code">ssh kel@192.168.1.60</div>
+<p>Type the server password.</p>
+<div class="see">The line now starts with <b>kel@school:~$</b>. Everything you type now happens on the server.</div>
+</div></div>
+
+<!-- PART 6 -->
+<div class="part"><span class="badge" style="background:var(--violet)">6</span><div><h2>Install the platform</h2><p>One command does everything.</p></div></div>
+
+<div class="step"><input type="checkbox"><h3>Unpack and install</h3><div class="body">
+<span class="where w-server">Server</span>
+<div class="code">sudo apt install -y unzip
+unzip -o school-platform-server.zip -d school-platform
+cd school-platform
+sudo ./server/install.sh ~/laptop-data.sql.gz</div>
+<p>Type your server password if asked. It shows steps <b>1/9</b> to <b>9/9</b>. It takes 5–10 minutes. Don't close the window.</p>
+<p class="warn">Want an empty platform instead of your laptop data? Use <b>sudo ./server/install.sh</b> (without the file). It will then ask you to make your own owner login.</p>
+</div></div>
+
+<div class="step"><input type="checkbox"><h3>Log in to Tailscale (for the free link)</h3><div class="body">
+<span class="where w-server">Server</span> <span class="where w-phone">Phone</span>
+<p>At step <b>9/9</b> you see something like:</p>
+<div class="see">To authenticate, visit: <b>https://login.tailscale.com/a/1a2b3c4d</b></div>
+<ol>
+<li>Select that link with your mouse (it copies), or type it into your phone's browser.</li>
+<li>Sign in with Google, Microsoft, Apple or GitHub (it's free). Click <b class="ui">Connect</b>.</li>
+<li>Back in the black window it carries on by itself.</li>
+</ol>
+</div></div>
+
+<div class="step"><input type="checkbox"><h3>Turn on the public link (Funnel)</h3><div class="body">
+<span class="where w-server">Server</span>
+<p>The first time, Tailscale may show another link that says Funnel is not enabled. Open it, click <b class="ui">Enable</b>, then type:</p>
+<div class="code">sudo tailscale funnel --bg 80</div>
+<div class="see">It says something like <b>Available on the internet: https://school.tail1234.ts.net/</b></div>
+</div></div>
+
+<div class="step"><input type="checkbox"><h3>See your links and check everything is green</h3><div class="body">
+<span class="where w-server">Server</span>
+<div class="code">school-status</div>
+<div class="see">You see green dots for Database, Backend, Web server and App answering, your <b>home network link</b>, your <b>anywhere link</b> and a <b>QR code</b>.</div>
+</div></div>
+
+<!-- PART 7 -->
+<div class="part"><span class="badge" style="background:var(--teal)">7</span><div><h2>Try it</h2><p>Open it everywhere.</p></div></div>
+
+<div class="step"><input type="checkbox"><h3>Open it on your phone</h3><div class="body">
+<span class="where w-phone">Phone</span>
+<p>Point your phone camera at the QR code on the screen, or type the <b>https://school…ts.net</b> link. Log in with <b>owner@demo.local</b> and <b>ChangeMe123!</b>.</p>
+<p>Make it an app: iPhone: Safari <b>Share</b> → <b>Add to Home Screen</b>. Android: Chrome <b>⋮</b> → <b>Add to Home screen</b>.</p>
+</div></div>
+
+<div class="step"><input type="checkbox"><h3>Change the owner password (important!)</h3><div class="body">
+<span class="where w-phone">Phone or laptop</span>
+<p>Anyone with the link can reach the login page, so the demo password must go. Logged in as owner, open <b class="ui">Change password</b> and pick a strong one.</p>
+</div></div>
+
+<div class="step"><input type="checkbox"><h3>Log in as other people</h3><div class="body">
+<span class="where w-laptop">Laptop</span> <span class="where w-phone">Phone</span>
+<ol>
+<li>As owner, open your school, then <b class="ui">Logins and passwords</b>.</li>
+<li>Find a person (a teacher, the nurse, a security officer), click <b class="ui">Reset password</b>. Write down the username and password it shows.</li>
+<li>Log in as them on another phone, or in a private window.</li>
+</ol>
+<p>One browser = one person. Use Chrome for one, Safari for another, and private windows for more.</p>
+</div></div>
+
+<!-- PART 8 -->
+<div class="part"><span class="badge" style="background:var(--green)">8</span><div><h2>Updates from GitHub (do this once)</h2><p>So new stages arrive with one command.</p></div></div>
+
+<div class="step"><input type="checkbox"><h3>Link the server to your GitHub</h3><div class="body">
+<span class="where w-server">Server</span>
+<div class="code">sudo /opt/school-platform/server/link-github.sh</div>
+<p>Type your repository like <b>yourname/school-platform</b>. Press <kbd>Enter</kbd> for branch <b>main</b>.</p>
+<p>If your repository is private, it shows a long line starting with <b>ssh-ed25519</b> and a GitHub page address. Open that page, paste the line into <b>Key</b>, title it <b>School server</b>, leave <b>Allow write access</b> unticked, click <b class="ui">Add key</b>, then press <kbd>Enter</kbd> on the server.</p>
+<div class="see">It says <b>Linked</b>.</div>
+</div></div>
+
+<div class="step"><input type="checkbox"><h3>Every time there's a new stage</h3><div class="body">
+<p><span class="where w-laptop">Laptop</span> unzip it, run <b>./setup.sh</b>, check it, then <b>git add -A</b>, <b>git commit -m "…"</b>, <b>git push</b> as usual.</p>
+<p><span class="where w-server">Server</span> connect with <b>ssh kel@192.168.1.60</b> and type:</p>
+<div class="code">sudo school-update</div>
+<div class="see">It backs up first, gets the new version and restarts. About 2–3 minutes.</div>
+</div></div>
+
+<!-- HELP -->
+<div class="part"><span class="badge" style="background:var(--red)">?</span><div><h2>If something goes wrong</h2><p>Most problems have a quick fix.</p></div></div>
+<div class="step" style="display:block">
+<table>
+<tr><th>What you see</th><th>What to do</th></tr>
+<tr><td>Laptop can't open https://…:8006</td><td>Check the laptop is on the same Wi-Fi as Proxmox. Check the address on the Proxmox screen.</td></tr>
+<tr><td><b>scp</b> or <b>ssh</b> says “Connection refused”</td><td>OpenSSH wasn't ticked. In the Proxmox Console, log in and type <b>sudo apt install -y openssh-server</b>.</td></tr>
+<tr><td><b>ssh</b> says “Connection timed out”</td><td>Wrong address. In the Proxmox Console type <b>ip a</b> and look for 192.168.x.x next to <b>ens18</b>.</td></tr>
+<tr><td>Install stops with red writing</td><td>Run the same install line again (it's safe to repeat). If it stops again, take a photo of the screen and send it to Claude.</td></tr>
+<tr><td>A red dot in <b>school-status</b></td><td>Type the restart command it shows, for example <b>sudo systemctl restart school-api</b>.</td></tr>
+<tr><td>Forgot the link</td><td><b>school-status</b> shows it again, with the QR code.</td></tr>
+<tr><td>Need a backup now</td><td><b>sudo school-backup</b>. Backups are also made every night at 2:30 am and kept 14 days.</td></tr>
+</table>
+</div>
+
+<p style="color:var(--muted);font-size:14px;margin-top:24px">Everyday commands on the server: <b>school-status</b> (is it running, links, QR) · <b>sudo school-update</b> (new version) · <b>sudo school-backup</b> (back up now).</p>
+</main>
+<script>
+const boxes = [...document.querySelectorAll('.step input[type=checkbox]')];
+document.getElementById('total').textContent = boxes.length;
+function load() { try { return JSON.parse(localStorage.getItem('proxmox-guide') || '[]'); } catch { return []; } }
+function save(v) { try { localStorage.setItem('proxmox-guide', JSON.stringify(v)); } catch {} }
+function update() {
+  const done = boxes.filter(b => b.checked).length;
+  boxes.forEach(b => b.closest('.step').classList.toggle('done', b.checked));
+  document.getElementById('count').textContent = done;
+  document.getElementById('bar').style.width = (done / boxes.length * 100) + '%';
+  save(boxes.map(b => b.checked));
+}
+load().forEach((v, i) => { if (boxes[i]) boxes[i].checked = v; });
+boxes.forEach(b => b.addEventListener('change', update));
+function resetAll() { boxes.forEach(b => b.checked = false); update(); }
+document.querySelectorAll('.code').forEach(c => {
+  const btn = document.createElement('button'); btn.textContent = 'Copy';
+  btn.onclick = () => { const k = c.cloneNode(true); k.querySelector('button')?.remove(); navigator.clipboard?.writeText(k.textContent.trim()).then(() => { btn.textContent = 'Copied'; btn.classList.add('ok'); setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('ok'); }, 1500); }); };
+  c.appendChild(btn);
+});
+update();
+</script>
+</body>
+</html>

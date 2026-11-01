@@ -8,6 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.access import not_found, owned_branch
+from app.api.deps import managed_school_ids, owned_group_ids
+from app.models import Membership, Role
 from app.api.deps import current_user
 from app.core.db import get_db
 from app.models import (
@@ -111,11 +113,24 @@ def _save(db: Session, user: User, kind: AttendanceKind, branch_id: uuid.UUID, a
 # ---------- Class register ----------
 
 def _owned_class(db: Session, user: User, class_id: uuid.UUID) -> SchoolClass:
+    """The class, if the user runs the school or is the class's own class teacher."""
     cls = db.get(SchoolClass, class_id)
     if not cls:
         raise not_found("Class")
+    if cls.form_teacher_id == user.id:
+        return cls
     owned_branch(db, user, cls.branch_id)
     return cls
+
+
+def _night_branch(db: Session, user: User, branch_id: uuid.UUID):
+    """Night roll: people who run the school, and house parents there."""
+    is_house_parent = db.scalar(select(Membership.id).where(
+        Membership.user_id == user.id, Membership.branch_id == branch_id, Membership.role == Role.house_parent))
+    if is_house_parent:
+        from app.models import Branch
+        return db.get(Branch, branch_id)
+    return owned_branch(db, user, branch_id)
 
 
 def _class_students(db: Session, cls: SchoolClass) -> list[Student]:
@@ -156,7 +171,7 @@ def _boarders(db: Session, branch_id: uuid.UUID) -> list[Student]:
 @router.get("/branches/{branch_id}/night-roll", response_model=Register)
 def get_night_roll(branch_id: uuid.UUID, on_date: date = Query(alias="date"),
                    user: User = Depends(current_user), db: Session = Depends(get_db)):
-    branch = owned_branch(db, user, branch_id)
+    branch = _night_branch(db, user, branch_id)
     return _build(db, AttendanceKind.night, on_date, f"Night roll call, {branch.name}", branch.id, None,
                   _boarders(db, branch.id))
 
@@ -164,7 +179,7 @@ def get_night_roll(branch_id: uuid.UUID, on_date: date = Query(alias="date"),
 @router.put("/branches/{branch_id}/night-roll", response_model=Register)
 def save_night_roll(branch_id: uuid.UUID, data: RegisterSave,
                     user: User = Depends(current_user), db: Session = Depends(get_db)):
-    branch = owned_branch(db, user, branch_id)
+    branch = _night_branch(db, user, branch_id)
     students = _boarders(db, branch.id)
     _save(db, user, AttendanceKind.night, branch.id, {s.id: s for s in students}, data)
     return _build(db, AttendanceKind.night, data.on_date, f"Night roll call, {branch.name}", branch.id, None, students)

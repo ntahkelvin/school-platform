@@ -387,3 +387,9 @@ class Vehicle(IdMixin, TimestampMixin, Base):
     driver_name: Mapped[str | None] = mapped_column(String(100))
     driver_phone: Mapped[str | None] = mapped_column(String(30))
     route: Mapped[str | None] = mapped_column(String(500))
+    odometer_km: Mapped[int | None] = mapped_column(Integer)                 # latest reading
+    insurance_expiry: Mapped[date | None] = mapped_column(Date)
+    roadworthiness_expiry: Mapped[date | None] = mapped_column(Date)
+    licence_expiry: Mapped[date | None] = mapped_column(Date)                # vehicle licence
+    service_every_km: Mapped[int | None] = mapped_column(Integer, default=5000)
+    last_service_km: Mapped[int | None] = mapped_column(Integer)

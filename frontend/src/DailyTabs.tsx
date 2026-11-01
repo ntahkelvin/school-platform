@@ -304,6 +304,10 @@ export function StaffTab({ branch }: { branch: BranchDetail }) {
   }, [branch.id]);
   useEffect(load, [load]);
   const [units, setUnits] = useState<Unit[]>([]);
+  const [done, setDone] = useState<{ staff: number; complete: number; items: { key: string; label: string; missing: number; names: string[] }[]; percent: Record<string, number> } | null>(null);
+  useEffect(() => {
+    api.raw<typeof done>("GET", `/api/schools/${branch.school_id}/staff-records/completeness`).then(setDone).catch(() => {});
+  }, [branch.school_id, staff]);
   useEffect(() => {
     records("school", branch.school_id, "departments").list().then(setDepartments).catch(() => {});
     api.staffOptions().then(setOptions).catch(() => {});
@@ -326,6 +330,23 @@ export function StaffTab({ branch }: { branch: BranchDetail }) {
         </div>
       )}
 
+      {done && done.staff > 0 && (
+        <section className="card editor records-strip" style={hue("teal")}>
+          <div className="card-head">
+            <div>
+              <h2 className="with-glyph"><Glyph icon="clipboard" hue="teal" size={34} />Staff records</h2>
+              <p className="muted small editor-intro">{done.complete} of {done.staff} records are complete. Click a person to fill in their record, or let staff fill in their own from their portal.</p>
+            </div>
+            <a className="button with-icon" href={`#/staff-cards/${branch.school_id}`}><Icon name="clipboard" size={16} />Print ID cards</a>
+          </div>
+          <div className="chips">
+            {done.items.filter((i) => i.missing > 0).map((i) => (
+              <span key={i.key} className="hue-chip" style={hue(i.missing > done.staff / 2 ? "red" : "amber")} title={i.names.slice(0, 30).join(", ")}>{i.label}: {i.missing} missing</span>
+            ))}
+          </div>
+        </section>
+      )}
+
       {staff && options.key_positions.length > 0 && (
         <section className="card editor">
           <div className="card-head">
@@ -341,7 +362,7 @@ export function StaffTab({ branch }: { branch: BranchDetail }) {
             {options.key_positions.map((k) => {
               const who = staff.filter((p) => holds(p, k));
               return who.length ? (
-                <button key={k} className="position filled" onClick={() => setEditing(who[0])}>
+                <button key={k} className="position filled" onClick={() => go({ page: "staff-record", school: branch.school_id, id: who[0].user_id })}>
                   <Avatar name={who[0].full_name} size={38} />
                   <span className="grow">
                     <span className="position-name">{k}</span>
@@ -366,7 +387,7 @@ export function StaffTab({ branch }: { branch: BranchDetail }) {
         <div className="card-head">
           <div>
             <h2>Everyone</h2>
-            <p className="muted small editor-intro">Click a person to see or change their record.</p>
+            <p className="muted small editor-intro">Click a person to open their full record.</p>
           </div>
           <div className="row wrap">
             <ImportButton branchId={branch.id} kind="staff" onDone={load} />
@@ -397,8 +418,11 @@ export function StaffTab({ branch }: { branch: BranchDetail }) {
             {list.map((p) => {
               const dl = deptLook(p.department_name);
               return (
-                <button key={p.user_id} className="person-card" onClick={() => setEditing(p)}>
-                  <Avatar name={p.full_name} size={54} />
+                <button key={p.user_id} className="person-card" onClick={() => go({ page: "staff-record", school: branch.school_id, id: p.user_id })}>
+                  <span className="card-avatar">
+                    <Avatar name={p.full_name} size={54} />
+                    {done?.percent[p.user_id] !== undefined && <span className={`pct${done.percent[p.user_id] === 100 ? " full" : ""}`}>{done.percent[p.user_id]}%</span>}
+                  </span>
                   <div className="person-info">
                     <strong>{displayName(p)}</strong>
                     <span className="job">{p.job_title || (p.teaching ? "Teacher" : "Staff")}</span>
@@ -467,10 +491,11 @@ function guessRole(job: string, teaching: boolean): StaffRole {
 }
 const NON_TEACHING = /bursar|account|cook|driver|security|cleaner|gardener|nurse|matron|secretary|admin|store|electric|plumb|carpenter|librarian|technician|registrar|ict officer|porter|cashier/;
 
-function StaffForm({
-  schoolId, person, jobTitle, departments, units, jobTitles, onSubmit, onCancel, onRemoveRole,
+export function StaffForm({
+  schoolId, hideLogin, person, jobTitle, departments, units, jobTitles, onSubmit, onCancel, onRemoveRole,
 }: {
   schoolId: string;
+  hideLogin?: boolean;
   person: StaffMember | null;
   jobTitle?: string;
   departments: Item[];
@@ -541,7 +566,7 @@ function StaffForm({
           </div>
         </div>
       )}
-      {person && <LoginPanel schoolId={schoolId} userId={person.user_id} />}
+      {person && !hideLogin && <LoginPanel schoolId={schoolId} userId={person.user_id} />}
       <div className="form-grid">
         <Field label="Title">
           <input list="staff-titles" value={v.title} onChange={(e) => set("title", e.target.value)} placeholder="Mr, Mrs, Rev Fr…" />

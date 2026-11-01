@@ -45,3 +45,15 @@ def owned_branch(db: Session, user: User, branch_id: uuid.UUID) -> Branch:
     if not branch or (branch.school.group_id not in owned_group_ids(user) and branch.school_id not in managed_school_ids(user)):
         raise not_found("Branch")
     return branch
+
+
+def member_branch(db: Session, user: User, branch_id: uuid.UUID) -> Branch:
+    """The branch, if the user runs it or works there in any role (for reading its basic details)."""
+    branch = db.get(Branch, branch_id)
+    if not branch:
+        raise not_found("Branch")
+    if branch.school.group_id in owned_group_ids(user) or branch.school_id in managed_school_ids(user):
+        return branch
+    if any(m.branch_id == branch.id or m.school_id == branch.school_id for m in user.memberships):
+        return branch
+    raise not_found("Branch")

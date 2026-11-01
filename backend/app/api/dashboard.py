@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import current_user, owned_group_ids
+from app.api.deps import current_user, managed_school_ids, owned_group_ids
 from app.core.db import get_db
 from app.models import (
     AttendanceKind, AttendanceRecord, AttendanceStatus, BoardingStatus, Branch, Department, Gender, Membership, Role,
@@ -41,10 +41,11 @@ class SchoolStats(BaseModel):
 def dashboard_stats(on_date: date | None = Query(default=None, alias="date"),
                     user: User = Depends(current_user), db: Session = Depends(get_db)):
     groups = owned_group_ids(user)
-    if not groups:
+    managed = managed_school_ids(user)
+    if not groups and not managed:
         return {}
     day = on_date or date.today()
-    school_ids = list(db.scalars(select(School.id).where(School.group_id.in_(groups))))
+    school_ids = list(set(db.scalars(select(School.id).where(School.group_id.in_(groups)))) | managed)
     stats: dict[uuid.UUID, SchoolStats] = {sid: SchoolStats() for sid in school_ids}
     if not school_ids:
         return stats

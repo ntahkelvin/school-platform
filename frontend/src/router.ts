@@ -9,6 +9,12 @@ export type Route =
   | { page: "student"; id: string }
   | { page: "org"; id: string }
   | { page: "board" }
+  | { page: "staff" }
+  | { page: "staff-record"; school: string; id: string }
+  | { page: "staff-cards"; school: string; id?: string }
+  | { page: "kiosk"; school: string; token: string }
+  | { page: "passport"; school: string; id: string }
+  | { page: "desk"; school: string; desk: string }
   | { page: "register"; kind: "school" | "night"; id: string; date: string };
 
 export type BranchTab = "students" | "classes" | "staff" | "attendance" | "facilities";
@@ -16,10 +22,10 @@ const TABS: BranchTab[] = ["students", "classes", "staff", "attendance", "facili
 
 export type SchoolTab =
   | "overview" | "students" | "attendance" | "classes" | "staff" | "facilities"
-  | "sections" | "departments" | "houses" | "grading" | "calendar" | "policies" | "imports" | "logins" | "teaching";
+  | "sections" | "departments" | "houses" | "grading" | "calendar" | "policies" | "imports" | "logins" | "teaching" | "staff-day" | "growth" | "operations";
 export const SCHOOL_TABS: SchoolTab[] = [
   "overview", "students", "attendance", "classes", "staff", "facilities",
-  "sections", "departments", "houses", "grading", "calendar", "policies", "imports", "logins", "teaching",
+  "sections", "departments", "houses", "grading", "calendar", "policies", "imports", "logins", "teaching", "staff-day", "growth", "operations",
 ];
 
 export function parse(hash: string): Route {
@@ -31,6 +37,12 @@ export function parse(hash: string): Route {
   if (parts[0] === "student" && parts[1]) return { page: "student", id: parts[1] };
   if (parts[0] === "org" && parts[1]) return { page: "org", id: parts[1] };
   if (parts[0] === "board") return { page: "board" };
+  if (parts[0] === "staff") return { page: "staff" };
+  if (parts[0] === "staff-record" && parts[1] && parts[2]) return { page: "staff-record", school: parts[1], id: parts[2] };
+  if (parts[0] === "desk" && parts[1] && parts[2]) return { page: "desk", school: parts[1], desk: parts[2] };
+  if (parts[0] === "growth" && parts[1] && parts[2]) return { page: "passport", school: parts[1], id: parts[2] };
+  if (parts[0] === "kiosk" && parts[1] && parts[2]) return { page: "kiosk", school: parts[1], token: parts[2] };
+  if (parts[0] === "staff-cards" && parts[1]) return { page: "staff-cards", school: parts[1], id: parts[2] };
   if (parts[0] === "branch" && parts[1]) {
     const tab = TABS.includes(parts[2] as BranchTab) ? (parts[2] as BranchTab) : "students";
     return { page: "branch", id: parts[1], tab };
@@ -53,6 +65,18 @@ export function href(route: Route): string {
       return `#/org/${route.id}`;
     case "board":
       return "#/board";
+    case "staff":
+      return "#/staff";
+    case "staff-record":
+      return `#/staff-record/${route.school}/${route.id}`;
+    case "staff-cards":
+      return `#/staff-cards/${route.school}${route.id ? `/${route.id}` : ""}`;
+    case "desk":
+      return `#/desk/${route.school}/${route.desk}`;
+    case "passport":
+      return `#/growth/${route.school}/${route.id}`;
+    case "kiosk":
+      return `#/kiosk/${route.school}/${route.token}`;
     case "branch":
       return `#/branch/${route.id}/${route.tab}`;
     case "register":

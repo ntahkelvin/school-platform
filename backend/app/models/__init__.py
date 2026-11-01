@@ -8,7 +8,13 @@ from app.models.structure import (
     FacilityKind, GradeBand, GradingScale, Hostel, HostelGender, HostelRoom, House, Period, PeriodKind, Policy,
     SchoolEvent, Section, Unit, Vehicle, VehicleKind,
 )
-from app.models.staff import EmploymentType, StaffProfile
+from app.models.staff import EmploymentType, StaffDocument, StaffProfile, StaffQualification
+from app.models.growth import Appraisal, CpdRecord, GrowthSettings, Kudos, Mentoring, Observation, Pulse, Strength
+from app.models.ops import ClinicVisit, DeskMember, GatePass, Incident, MedicineStock, StudentHealth, Ticket, Visitor
+from app.models.logistics import (
+    BusRegister, BusRoute, FuelLog, KitchenSettings, MealPlan, MealService, RouteRider, StockItem, StockMove, Trip, VehicleCheck, VehicleService,
+)
+from app.models.staffday import DutyAssignment, LeaveRequest, LessonNote, StaffAttendance, StaffDaySettings
 from app.models.tenancy import Branch, School, SchoolGroup, SchoolType
 from app.models.users import Membership, Role, User
 
@@ -21,6 +27,11 @@ __all__ = [
     "AcademicSession", "ClassSubject", "StudentElective", "TeachingGroup", "SchoolClass", "Subject", "Term",
     "BoardingStatus", "Gender", "Student", "StudentGuardian", "StudentStatus",
     "Branch", "School", "SchoolGroup", "SchoolType",
-    "EmploymentType", "StaffProfile",
+    "EmploymentType", "StaffDocument", "StaffProfile", "StaffQualification",
+    "DutyAssignment", "LeaveRequest", "LessonNote", "StaffAttendance", "StaffDaySettings",
+    "Appraisal", "CpdRecord", "GrowthSettings", "Kudos", "Mentoring", "Observation", "Pulse", "Strength",
+    "ClinicVisit", "DeskMember", "GatePass", "Incident", "MedicineStock", "StudentHealth", "Ticket", "Visitor",
+    "BusRegister", "BusRoute", "FuelLog", "KitchenSettings", "MealPlan", "MealService", "RouteRider", "StockItem", "StockMove", "Trip",
+    "VehicleCheck", "VehicleService",
     "Membership", "Role", "User",
 ]

@@ -237,7 +237,16 @@ def update_slot(slot_id: uuid.UUID, data: SlotIn, user: User = Depends(current_u
     slot = db.get(ClassSubject, slot_id)
     if not slot:
         raise not_found("Subject")
-    cls, branch = own_class(db, user, slot.class_id)
+    cls = db.get(SchoolClass, slot.class_id)
+    from app.api.electives import leads_subject, runs_school
+    branch = db.get(Branch, cls.branch_id)
+    if not runs_school(user, branch):
+        if not leads_subject(db, user, db.get(Subject, slot.subject_id)):
+            raise not_found("Class")
+        # Heads of department or unit may choose the teacher, nothing else.
+        data = SlotIn(teacher_user_id=data.teacher_user_id) if "teacher_user_id" in data.model_fields_set else SlotIn()
+        if "teacher_user_id" not in data.model_fields_set:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Heads can only choose the teacher")
     if "teacher_user_id" in data.model_fields_set:
         check_teacher(db, branch, data.teacher_user_id)
         slot.teacher_user_id = data.teacher_user_id

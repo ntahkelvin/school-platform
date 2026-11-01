@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.access import owned_branch, owned_group, owned_school
+from app.api.access import member_branch, owned_branch, owned_group, owned_school
 from app.api.deps import current_user, owned_group_ids
 from app.core.db import get_db
 from app.models import Branch, School, SchoolGroup, SchoolType, User
@@ -146,7 +146,7 @@ def _branch_detail(branch: Branch) -> BranchDetail:
 
 @router.get("/branches/{branch_id}", response_model=BranchDetail)
 def get_branch(branch_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> BranchDetail:
-    return _branch_detail(owned_branch(db, user, branch_id))
+    return _branch_detail(member_branch(db, user, branch_id))
 
 
 @router.patch("/branches/{branch_id}", response_model=BranchDetail)

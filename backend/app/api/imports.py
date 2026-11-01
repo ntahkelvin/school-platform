@@ -191,6 +191,7 @@ class Ctx:
     db: Session
     branch: Branch
     school: School
+    user: User | None = None
     logins: list[dict] = field(default_factory=list)
     new_logins: int = 0
 
@@ -388,9 +389,60 @@ def do_staff(ctx: Ctx, r: dict) -> tuple[str, str]:
     save_profile(ctx.db, ctx.school.id, person.id, ProfileIn(**profile.model_dump(include=given)), only_given=True)
     if hod:
         dept.head_user_id = person.id
+    _staff_extras(ctx, person.id, r)
     bits = [b for b in [job, dept.name if dept else None, "head of department" if hod else None] if b]
     who = " ".join(x for x in [text(r.get("title")), person.full_name] if x)
     return ("added" if added else "updated"), who + (f": {', '.join(bits)}" if bits else "") + (" (new login)" if password else "")
+
+
+def _staff_extras(ctx: Ctx, user_id, r: dict) -> None:
+    """Personal details and a qualification from the staff upload."""
+    from app.models import StaffProfile, StaffQualification
+    p = ctx.db.scalar(select(StaffProfile).where(StaffProfile.school_id == ctx.school.id, StaffProfile.user_id == user_id))
+    if not p:
+        return
+    simple = {"trcn_number": 40, "state_of_origin": 50, "lga": 80, "address": 300, "marital_status": 20}
+    for key, n in simple.items():
+        if text(r.get(key)):
+            setattr(p, key, text(r.get(key))[:n])
+    dob = date_of(r.get("date_of_birth"), "Date of birth")
+    if dob:
+        p.date_of_birth = dob
+    if text(r.get("kin_name")):
+        p.next_of_kin_name = text(r.get("kin_name"))[:200]
+    if text(r.get("kin_rel")):
+        p.next_of_kin_relationship = text(r.get("kin_rel"))[:40]
+    if phone_of(r.get("kin_phone")):
+        p.next_of_kin_phone = normalize_phone(phone_of(r.get("kin_phone")))
+    title = text(r.get("qualification"))
+    if title:
+        year = number_of(r.get("qual_year"), "Year")
+        exists = ctx.db.scalar(select(StaffQualification).where(StaffQualification.school_id == ctx.school.id,
+                                                                StaffQualification.user_id == user_id,
+                                                                func.lower(StaffQualification.title) == title.lower()))
+        if not exists:
+            ctx.db.add(StaffQualification(school_id=ctx.school.id, user_id=user_id, title=title[:150],
+                                          institution=text(r.get("institution"))[:200] or None, year=year))
+
+
+def do_staff_pay(ctx: Ctx, r: dict) -> tuple[str, str]:
+    from app.api.staff_records import sees_pay
+    from app.models import StaffProfile
+    if not sees_pay(ctx.user, ctx.school):
+        raise RowProblem("Only the owner, principal and bursar can upload pay details")
+    t = teacher_of(ctx, need(r, "staff", "Staff"))
+    p = ctx.db.scalar(select(StaffProfile).where(StaffProfile.school_id == ctx.school.id, StaffProfile.user_id == t.id))
+    if not p:
+        raise RowProblem(f"{t.full_name} has no staff record yet")
+    acct = re.sub(r"\D", "", text(r.get("account_number")))
+    if text(r.get("account_number")) and len(acct) != 10:
+        raise RowProblem("The account number should be 10 digits (NUBAN)")
+    for key, n in (("grade_level", 20), ("step", 10), ("bank_name", 80), ("account_name", 200)):
+        if text(r.get(key)):
+            setattr(p, key, text(r.get(key))[:n])
+    if acct:
+        p.account_number = acct
+    return "updated", f"{t.full_name}: pay details saved"
 
 
 # ---- Board members ----
@@ -756,6 +808,8 @@ def do_unit(ctx: Ctx, r: dict) -> tuple[str, str]:
             raise RowProblem(f"There's no subject called '{sn}'")
         subj.unit_id, subj.department_id = u.id, dept.id
         linked.append(subj.name)
+    from app.api.units import auto_members
+    auto_members(ctx.db, ctx.school.id, u, [n.replace(" Language", "") for n in linked])
     return result, f"{u.name} unit in {dept.name}" + (f" ({', '.join(linked)})" if linked else "")
 
 
@@ -783,6 +837,67 @@ def do_elective_choice(ctx: Ctx, r: dict) -> tuple[str, str]:
         ctx.db.add(ClassSubject(class_id=student.class_id, subject_id=subj.id, compulsory=False))
     set_choice(ctx.db, student, subj, group, True)
     return "added", f"{student.full_name} takes {subj.name}" + (f" with {group.name.split(': ')[-1]}" if group else "")
+
+
+def duty_names(ctx: Ctx) -> list[str]:
+    from app.api.staff_day import DUTIES
+    return DUTIES
+
+
+def do_duty(ctx: Ctx, r: dict) -> tuple[str, str]:
+    from app.models import DutyAssignment
+    from app.api.staff_day import settings_for
+    t = teacher_of(ctx, need(r, "staff", "Staff"))
+    duty = need(r, "duty", "Duty")
+    start = date_of(r.get("on_date"), "Date")
+    if not start:
+        raise RowProblem("Give the date of the duty")
+    end = date_of(r.get("until"), "Until") or start
+    if end < start or (end - start).days > 120:
+        raise RowProblem("'Until' should be after the date and at most 120 days later")
+    work = settings_for(ctx.db, ctx.school.id).work_days
+    made = 0
+    from datetime import timedelta
+    for i in range((end - start).days + 1):
+        d = start + timedelta(days=i)
+        if end != start and d.weekday() not in work and duty != "Weekend duty":
+            continue
+        if not ctx.db.scalar(select(DutyAssignment.id).where(DutyAssignment.school_id == ctx.school.id, DutyAssignment.user_id == t.id,
+                                                             DutyAssignment.duty == duty, DutyAssignment.on_date == d)):
+            ctx.db.add(DutyAssignment(school_id=ctx.school.id, user_id=t.id, duty=duty, on_date=d, note=text(r.get("note")) or None))
+            made += 1
+    return ("added" if made else "skipped"), f"{t.full_name}: {duty}, {made} day(s)"
+
+
+def cpd_kind_names(ctx: Ctx) -> list[str]:
+    from app.api.growth import CPD_KINDS
+    return list(CPD_KINDS.values())
+
+
+def do_training(ctx: Ctx, r: dict) -> tuple[str, str]:
+    from app.api.growth import CPD_KINDS
+    from app.models import CpdRecord
+    t = teacher_of(ctx, need(r, "staff", "Staff"))
+    title = need(r, "title", "Training")
+    on = date_of(r.get("on_date"), "Date")
+    if not on:
+        raise RowProblem("Give the date of the training")
+    raw_kind = text(r.get("kind")).lower()
+    kind = next((k for k, v in CPD_KINDS.items() if raw_kind in (k, v.lower())), "workshop" if not raw_kind else None)
+    if not kind:
+        raise RowProblem(f"Unknown kind of training '{r.get('kind')}'")
+    try:
+        hours = float(text(r.get("hours")) or 1)
+    except ValueError:
+        raise RowProblem("Hours should be a number, e.g. 3 or 1.5")
+    if not 0 < hours <= 500:
+        raise RowProblem("Hours should be between 0.5 and 500")
+    if ctx.db.scalar(select(CpdRecord.id).where(CpdRecord.school_id == ctx.school.id, CpdRecord.user_id == t.id,
+                                                CpdRecord.title == title, CpdRecord.on_date == on)):
+        return "skipped", f"{t.full_name}: {title} is already recorded"
+    ctx.db.add(CpdRecord(school_id=ctx.school.id, user_id=t.id, title=title, provider=text(r.get("provider")) or None, kind=kind,
+                         on_date=on, hours=hours, verified_by_id=ctx.user.id if ctx.user else None))
+    return "added", f"{t.full_name}: {title}, {hours:g} h"
 
 
 KINDS: dict[str, Kind] = {k.key: k for k in [
@@ -818,7 +933,18 @@ KINDS: dict[str, Kind] = {k.key: k for k in [
         Col("Staff number", "staff_no", aliases=("staff no", "staff id"), width=14),
         Col("Employment", "employment", choices=["Full time", "Part time", "Contract", "NYSC corps member", "Volunteer"], width=16),
         Col("Date joined", "date_joined", hint="Day/month/year, e.g. 05/09/2019", width=14),
-        Col("Qualification", "qualification", hint="e.g. B.Sc. Ed, NCE, M.Sc.", width=16),
+        Col("Qualification", "qualification", hint="Highest qualification, e.g. B.Sc. Ed Chemistry, NCE", width=22),
+        Col("Institution", "institution", hint="Where the qualification is from", width=22),
+        Col("Year", "qual_year", hint="Year of the qualification", width=8),
+        Col("TRCN number", "trcn_number", aliases=("trcn", "trcn no"), width=16),
+        Col("Date of birth", "date_of_birth", hint="Day/month/year", aliases=("dob",), width=13),
+        Col("State of origin", "state_of_origin", aliases=("state",), width=14),
+        Col("LGA", "lga", aliases=("local government",), width=14),
+        Col("Home address", "address", aliases=("address",), width=28),
+        Col("Marital status", "marital_status", choices=["Single", "Married", "Widowed", "Divorced", "Separated"], width=12),
+        Col("Next of kin", "kin_name", hint="Full name", aliases=("next of kin name",), width=24),
+        Col("Next of kin relationship", "kin_rel", aliases=("relationship",), width=14),
+        Col("Next of kin phone", "kin_phone", width=16),
     ], do_staff, [
         ["Rev Fr", "John Okafor", "Male", "08031234567", "principal@school.ng", "Principal", "", "", "", "Yes", "", "JMC/001", "Full time", "01/09/2018", "M.Ed"],
         ["Mrs", "Ngozi Eze", "Female", "08051234567", "", "Chemistry Teacher", "Sciences", "Chemistry", "Yes", "Yes", "", "JMC/014", "Full time", "12/01/2021", "B.Sc. Ed"],
@@ -919,6 +1045,15 @@ KINDS: dict[str, Kind] = {k.key: k for k in [
         Col("Elective", "elective", hint="Yes if only some students take it (SS electives, Igbo or Yoruba...).",
             choices=YES_NO, aliases=("optional",), width=10),
     ], do_subject_teacher, [["SS 1", "Chemistry", "Ngozi Eze", "Yes"], ["JSS 2A", "Mathematics", "JMC/STF/019", ""]]),
+    Kind("staff-pay", "Staff pay details (private)", "staff member", "Grade level and bank details. Only the owner, principal and bursar can upload these.",
+         "banknote", "green", [
+        Col("Staff", "staff", True, "Name as on the Staff page, staff number or phone", choices=teacher_names, aliases=("name", "full name", "staff number"), width=28),
+        Col("Grade level", "grade_level", width=12),
+        Col("Step", "step", width=8),
+        Col("Bank", "bank_name", width=18),
+        Col("Account number", "account_number", hint="10 digits", width=16),
+        Col("Account name", "account_name", width=26),
+    ], do_staff_pay, [["JMC/STF/014", "GL 08", "3", "First Bank", "3012345678", "Ngozi Eze"]]),
     Kind("units", "Units", "unit", "Units inside departments (Chemistry unit, Guidance and Counselling...) with their heads and subjects.",
          "network", "indigo", [
         Col("Department", "department", True, choices=department_names, width=24),
@@ -934,6 +1069,23 @@ KINDS: dict[str, Kind] = {k.key: k for k in [
         Col("Teacher", "teacher", hint="Optional. The teacher (group) for this student.", choices=teacher_names, width=26),
         Col("Drop", "drop", hint="Yes to take this subject away from the student.", choices=YES_NO, width=8),
     ], do_elective_choice, [["JMC/23/0001", "Chemistry", "Ngozi Eze", ""], ["JMC/23/0002", "Literature in English", "", ""]]),
+    Kind("duty-rota", "Duty rota", "duty", "Who is on duty and when: teacher on duty, prep, night duty, dining hall, weekends...",
+         "shield-check", "teal", [
+        Col("Staff", "staff", True, "Name as on the Staff page, staff number or phone", choices=teacher_names, aliases=("name", "teacher"), width=28),
+        Col("Duty", "duty", True, "Pick one or type your own", choices=duty_names, width=22),
+        Col("Date", "on_date", True, "e.g. 02/11/2026", aliases=("from", "start", "day"), width=14),
+        Col("Until", "until", hint="Optional. Repeat every work day up to this date.", aliases=("to", "end"), width=14),
+        Col("Note", "note", width=26),
+    ], do_duty, [["Ngozi Eze", "Teacher on duty", "02/11/2026", "06/11/2026", "Week 1"], ["JMC/STF/019", "Night duty", "03/11/2026", "", ""]]),
+    Kind("training", "Staff training (CPD)", "training record", "Workshops, courses, conferences and in-school training each person attended.",
+         "graduation-cap", "teal", [
+        Col("Staff", "staff", True, "Name as on the Staff page, staff number or phone", choices=teacher_names, aliases=("name", "teacher"), width=28),
+        Col("Training", "title", True, "e.g. Jolly Phonics workshop", aliases=("title", "course"), width=34),
+        Col("Kind", "kind", hint="Workshop, Course, Conference...", choices=cpd_kind_names, aliases=("type",), width=22),
+        Col("Date", "on_date", True, "e.g. 14/09/2026", aliases=("day",), width=14),
+        Col("Hours", "hours", True, width=8),
+        Col("Run by", "provider", aliases=("provider", "organiser"), width=22),
+    ], do_training, [["Ngozi Eze", "Jolly Phonics training", "Workshop", "14/09/2026", "12", "Jolly Learning"]]),
 ]}
 
 
@@ -1086,7 +1238,7 @@ class KindOut(BaseModel):
 
 def _ctx(db: Session, user: User, branch_id: uuid.UUID) -> Ctx:
     branch = owned_branch(db, user, branch_id)
-    return Ctx(db=db, branch=branch, school=branch.school)
+    return Ctx(db=db, branch=branch, school=branch.school, user=user)
 
 
 def _kind(key: str) -> Kind:

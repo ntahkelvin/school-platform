@@ -1,3 +1,5 @@
+import { HealthModal } from "./SickBay";
+import { ops, type Health } from "./opsApi";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   api, errorText,
@@ -7,7 +9,7 @@ import {
 import Layout from "./Layout";
 import { href } from "./router";
 import StudentForm, { checkGuardian, emptyGuardian, GuardianFields } from "./StudentForm";
-import { Empty, hue, Modal, NewLoginNotice } from "./ui";
+import { Empty, Glyph, hue, Modal, NewLoginNotice } from "./ui";
 import Icon from "./Icon";
 import { subjectLook } from "./look";
 
@@ -85,6 +87,7 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
             <AttendanceCard studentId={student.id} />
 
             <SubjectsCard studentId={student.id} classKey={student.class_id ?? ""} />
+            <HealthCard studentId={student.id} />
 
             <section className="card">
               <div className="card-head">
@@ -309,6 +312,23 @@ function SubjectsCard({ studentId, classKey }: { studentId: string; classKey: st
           </ul>
         </Modal>
       )}
+    </section>
+  );
+}
+
+function HealthCard({ studentId }: { studentId: string }) {
+  const [h, setH] = useState<Health | null | undefined>(undefined);
+  const [open, setOpen] = useState(false);
+  useEffect(() => { ops.health(studentId).then((x) => setH(x.health)).catch(() => setH(null)); }, [studentId, open]);
+  if (h === undefined) return null;
+  const facts = h ? [h.genotype && `Genotype ${h.genotype}`, h.blood_group && `Blood ${h.blood_group}`, h.allergies && `Allergic to ${h.allergies}`, h.conditions].filter(Boolean) : [];
+  return (
+    <section className="card">
+      <div className="card-head"><h2 className="with-glyph"><Glyph icon="heart-pulse" hue="rose" size={30} />Health</h2>
+        <button className="text-link" onClick={() => setOpen(true)}>Open</button></div>
+      {facts.length ? <div className="chips">{facts.map((f) => <span key={String(f)} className="hue-chip" style={hue("rose")}>{f}</span>)}</div>
+        : <p className="muted small">Nothing recorded. The sick bay keeps this up to date.</p>}
+      {open && <HealthModal studentId={studentId} onClose={() => setOpen(false)} />}
     </section>
   );
 }

@@ -45,6 +45,23 @@ STANDARD_UNITS: dict[str, list[tuple[str, list[str]]]] = {
 }
 
 
+def auto_members(db: Session, school_id: uuid.UUID, unit: Unit, subject_names: list[str]) -> None:
+    """Puts staff whose position names one of the unit's subjects (e.g. 'Chemistry Teacher') into the unit,
+    if they aren't in a unit yet."""
+    words = [n.lower() for n in subject_names if n]
+    if not words:
+        return
+    all_names = [n.lower() for n in db.scalars(select(Subject.name).where(Subject.school_id == school_id))]
+    for p in db.scalars(select(StaffProfile).where(StaffProfile.school_id == school_id, StaffProfile.unit_id.is_(None))):
+        job = (p.job_title or "").lower()
+        for w in words:
+            # "Further Mathematics Teacher" belongs with Further Mathematics, not Mathematics.
+            longer = [n for n in all_names if w in n and n != w and n in job]
+            if w in job and not longer:
+                p.unit_id, p.department_id = unit.id, unit.department_id
+                break
+
+
 class UnitIn(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
     department_id: uuid.UUID
@@ -161,6 +178,7 @@ def add_standard_units(school_id: uuid.UUID, user: User = Depends(current_user),
                     s.unit_id = u.id
                     if not s.department_id:
                         s.department_id = d.id
+            auto_members(db, school_id, u, [n.replace(" Language", "") for n in subject_names])
     db.commit()
     return unit_list(db, school_id)
 

@@ -10,7 +10,10 @@ import {
   PenTool, Phone, Pi, Plane, Plus, Presentation, Puzzle, Rocket, Scale, School, ScrollText, Search, Shapes, Shield,
   ShieldCheck, Shirt, ShoppingBag, Sigma, Snowflake, Soup, Sparkles, Sprout, Star, Stethoscope, Store, Sun, Swords, Tent,
   Theater, Tractor, Trash2, TrendingUp, Trophy, UserPlus, UserRound, Users, UtensilsCrossed, Volleyball, Wallet,
-  Warehouse, Waves, Wrench, X, Zap, type LucideIcon,
+  Warehouse, Waves, Wrench, X, Zap, LogIn, LogOut, ScanLine, ScanQrCode, ClipboardList, FileText, Check, Undo2, Keyboard,
+  Delete, CalendarX, Hourglass, Timer, Send, RefreshCw, Link, Copy, ChevronLeft, ChevronRight, UserCheck, UserX, Umbrella,
+  Locate, Smartphone, CircleCheck, CircleX, TreePalm, Inbox, Settings, CalendarRange, History, Eye, Heart, Target, Gauge, MessageCircle,
+  Flame, Quote, ThumbsUp, type LucideIcon,
 } from "lucide-react";
 
 import { createLucideIcon } from "lucide-react";
@@ -54,6 +57,13 @@ const ICONS: Record<string, LucideIcon> = {
   tractor: Tractor, trending: TrendingUp, trophy: Trophy, users: Users, utensils: UtensilsCrossed, volleyball: Volleyball,
   wallet: Wallet, waves: Waves, wrench: Wrench, zap: Zap, "calendar-check": CalendarCheck, "calendar-days": CalendarDays,
   layers: Layers, network: Network, house: House, user: UserRound, hotel: Hotel, school: School, briefcase: Briefcase,
+  "log-in": LogIn, "log-out": LogOut, scan: ScanLine, "scan-qr": ScanQrCode, "clipboard-list": ClipboardList, file: FileText,
+  check: Check, undo: Undo2, keyboard: Keyboard, backspace: Delete, "calendar-x": CalendarX, hourglass: Hourglass, timer: Timer,
+  send: Send, refresh: RefreshCw, link: Link, copy: Copy, "chevron-left": ChevronLeft, "chevron-right": ChevronRight,
+  "user-check": UserCheck, "user-x": UserX, umbrella: Umbrella, locate: Locate, smartphone: Smartphone, "circle-check": CircleCheck,
+  "circle-x": CircleX, "palm-tree": TreePalm, inbox: Inbox, settings: Settings, "calendar-range": CalendarRange, history: History,
+  "staff-day": UserCheck, eye: Eye, heart: Heart, target: Target, gauge: Gauge, message: MessageCircle, flame: Flame, quote: Quote,
+  "thumbs-up": ThumbsUp, growth: Sprout, operations: Wrench,
 };
 
 export default function Icon({ name, size = 18, stroke = 1.9 }: { name: string; size?: number; stroke?: number }) {

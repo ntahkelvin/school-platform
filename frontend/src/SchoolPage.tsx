@@ -9,6 +9,9 @@ import AttendanceTab from "./AttendanceTab";
 import BulkPage, { ImportButton } from "./Bulk";
 import LoginsPage from "./Logins";
 import TeachingPage from "./Teaching";
+import StaffDayPage from "./StaffDay";
+import GrowthPage from "./Growth";
+import OperationsPage from "./Operations";
 import { ClassesTab, StaffTab, StudentsTab } from "./DailyTabs";
 import FacilitiesTab from "./FacilitiesTab";
 import Layout from "./Layout";
@@ -49,6 +52,9 @@ const TAB_LABEL: Record<SchoolTab, string> = {
   imports: "Bulk upload",
   logins: "Logins and passwords",
   teaching: "Teaching",
+  "staff-day": "Staff day",
+  growth: "Growth",
+  operations: "Operations",
 };
 
 export default function SchoolPage({
@@ -136,6 +142,9 @@ export default function SchoolPage({
           {tab === "policies" && <PoliciesTab schoolId={school.id} people={people} />}
           {campus && tab === "teaching" && <TeachingPage branchId={campus.id} schoolId={school.id} />}
           {tab === "logins" && <LoginsPage schoolId={school.id} />}
+          {tab === "growth" && <GrowthPage schoolId={school.id} />}
+          {tab === "operations" && <OperationsPage schoolId={school.id} />}
+          {campus && tab === "staff-day" && <StaffDayPage schoolId={school.id} branchId={campus.id} />}
           {campus && tab === "imports" && <BulkPage branchId={campus.id} onChanged={() => { loadClasses(); load(); }} />}
             </div>
           </div>
@@ -182,7 +191,7 @@ function SchoolHero({ school, profile, onRename, onManage }: {
 }
 
 const NAV_GROUPS: { label: string; tabs: SchoolTab[] }[] = [
-  { label: "Daily", tabs: ["overview", "students", "attendance", "classes", "teaching", "staff", "facilities"] },
+  { label: "Daily", tabs: ["overview", "students", "attendance", "classes", "teaching", "staff", "staff-day", "growth", "operations", "facilities"] },
   { label: "Set-up", tabs: ["sections", "departments", "houses", "grading", "calendar", "policies", "imports", "logins"] },
 ];
 
