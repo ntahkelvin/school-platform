@@ -27,7 +27,8 @@ AREAS: dict[str, dict] = {
     "staff_day": {"label": "Staff day", "icon": "staff-day", "hint": "Staff sign-in, leave, duties, lesson notes"},
     "growth": {"label": "Growth", "icon": "growth", "hint": "Observations, appraisals, training, wellbeing"},
     "operations": {"label": "Operations", "icon": "operations", "hint": "Helpdesk, gate, kitchen, transport, store"},
-    "facilities": {"label": "Facilities", "icon": "facilities", "hint": "Buildings, hostels and beds, vehicles"},
+    "facilities": {"label": "Facilities and assets", "icon": "facilities", "hint": "Buildings, hostels and beds, vehicles, the asset register"},
+    "library": {"label": "Library", "icon": "book", "hint": "Books, loans, library cards and reading"},
     "setup": {"label": "School set-up", "icon": "sections", "hint": "Sections, departments, houses, grading, calendar, rules"},
     "imports": {"label": "Bulk upload", "icon": "layers", "hint": "Upload lists of students and staff", "change_only": True},
     "logins": {"label": "Logins and passwords", "icon": "shield-check", "hint": "Give logins, reset passwords, switch off accounts"},
@@ -76,12 +77,12 @@ DEFAULTS: dict[str, set[str]] = {
     "head_of_school": set(ALL),
     "head": (ALL - {"rights.change"}),
     "vice_principal": _see(*[a for a in AREA_KEYS if a not in ("imports", "logins", "rights")])
-        | _both("students", "attendance", "classes", "teaching", "staff_day", "growth", "operations")
+        | _both("students", "attendance", "classes", "teaching", "staff_day", "growth", "operations", "library")
         | {"private.safeguarding"},
     "it_admin": _see(*[a for a in AREA_KEYS if a != "imports"])
-        | _both("school", "students", "classes", "teaching", "staff", "staff_day", "operations", "facilities", "setup", "imports", "logins")
+        | _both("school", "students", "classes", "teaching", "staff", "staff_day", "operations", "facilities", "setup", "imports", "logins", "library")
         | {"power.see_as"},
-    "bursar": _see("school", "students", "staff") | {"private.staff_pay"},
+    "bursar": _see("school", "students", "staff", "facilities") | {"private.staff_pay"},
     "house_parent": set(),
     "teacher": set(),
     "support": set(),
@@ -119,6 +120,9 @@ ROUTE_AREAS: list[tuple[str, str, str]] = [
     ("units", r"", "setup"),
     ("boards", r"", "school"),
     ("rights", r"", "rights"),
+    ("library", r"", "library"),
+    ("cleaning", r"", "operations"),
+    ("assets", r"", "facilities"),
 ]
 
 def set_route(user: User, method: str, module: str, path: str) -> None:
@@ -212,7 +216,12 @@ def may(user: User, school: School, area: str | None = None, level: str | None =
             return owns(user, school) or bool(roles_at(user, school) & {"head_of_school", "head", "vice_principal", "it_admin"})
         area, lvl = need
         level = level or lvl
-    return f"{area}.{level or 'see'}" in rights_of(user, school)
+    if level is None:
+        # Same as the page being used: reading needs "see", saving needs "change".
+        level = need[1] if need else "see"
+    if AREAS.get(area, {}).get("change_only"):
+        level = "change"
+    return f"{area}.{level}" in rights_of(user, school)
 
 
 def any_area(user: User, school: School) -> bool:

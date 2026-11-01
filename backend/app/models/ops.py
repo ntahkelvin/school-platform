@@ -35,6 +35,7 @@ class Ticket(IdMixin, TimestampMixin, Base):
     details: Mapped[str | None] = mapped_column(Text)
     location: Mapped[str | None] = mapped_column(String(120))
     facility_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("facilities.id", ondelete="SET NULL"))
+    asset_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("assets.id", ondelete="SET NULL"), index=True)
     priority: Mapped[str] = mapped_column(String(10), default="normal")    # low, normal, urgent
     status: Mapped[str] = mapped_column(String(12), default="new")          # new, assigned, working, waiting, done, closed
     raised_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)

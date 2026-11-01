@@ -9,6 +9,8 @@ import { href } from "./router";
 import { TeacherPicker, type Teacher } from "./Teaching";
 import { CheckInCard, KudosCard, MyGrowthCard } from "./GrowthMe";
 import { HelpCard, MyDeskCards } from "./OpsMe";
+import { MyCleaningCard } from "./Cleaning";
+import { MyLibraryCard } from "./Library";
 import { LeaveWaitingCard, MyDayCard, MyDutiesCard, MyLeaveCard, MyNotesCard, ToReviewCard } from "./StaffDayMe";
 import { Avatar, Empty, Field, Glyph, hue, Modal, Stat } from "./ui";
 
@@ -210,6 +212,7 @@ function SchoolPortal({ s, me, reload }: { s: SchoolHome; me: Me; reload: () => 
 
       <div className="portal-grid">
         <MyDeskCards schoolId={s.school_id} />
+        <MyCleaningCard schoolId={s.school_id} />
         {s.leave_waiting > 0 && <LeaveWaitingCard schoolId={s.school_id} count={s.leave_waiting} />}
         {s.to_review > 0 && <ToReviewCard schoolId={s.school_id} count={s.to_review} onChanged={reload} />}
         {s.runs_school && (
@@ -362,6 +365,7 @@ function SchoolPortal({ s, me, reload }: { s: SchoolHome; me: Me; reload: () => 
         </section>
 
         <HelpCard schoolId={s.school_id} />
+        <MyLibraryCard schoolId={s.school_id} />
         <MyGrowthCard schoolId={s.school_id} meId={me.id} onChanged={reload} />
         <CheckInCard schoolId={s.school_id} />
         <KudosCard schoolId={s.school_id} meId={me.id} />

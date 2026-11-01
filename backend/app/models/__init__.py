@@ -14,6 +14,9 @@ from app.models.ops import ClinicVisit, DeskMember, GatePass, Incident, Medicine
 from app.models.logistics import (
     BusRegister, BusRoute, FuelLog, KitchenSettings, MealPlan, MealService, RouteRider, StockItem, StockMove, Trip, VehicleCheck, VehicleService,
 )
+from app.models.library import (
+    Asset, AssetCount, Book, BookCopy, BookHold, CleanArea, CleanDuty, CleanLog, LibrarySettings, Loan,
+)
 from app.models.rights import AccessGrant, AuditEntry, Notice, RightSetting
 from app.models.staffday import DutyAssignment, LeaveRequest, LessonNote, StaffAttendance, StaffDaySettings
 from app.models.tenancy import Branch, School, SchoolGroup, SchoolType
@@ -35,5 +38,6 @@ __all__ = [
     "BusRegister", "BusRoute", "FuelLog", "KitchenSettings", "MealPlan", "MealService", "RouteRider", "StockItem", "StockMove", "Trip",
     "VehicleCheck", "VehicleService",
     "AccessGrant", "AuditEntry", "Notice", "RightSetting",
+    "Asset", "AssetCount", "Book", "BookCopy", "BookHold", "CleanArea", "CleanDuty", "CleanLog", "LibrarySettings", "Loan",
     "Membership", "Role", "User",
 ]

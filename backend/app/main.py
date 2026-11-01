@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.api import academics, attendance, auth, boards, dashboard, imports, logins, organisations, schools, staff, starter, structure, students, teaching, units, electives, portal, staff_records, staff_day, growth, ops, logistics, rights
+from app.api import academics, attendance, auth, boards, dashboard, imports, logins, organisations, schools, staff, starter, structure, students, teaching, units, electives, portal, staff_records, staff_day, growth, ops, logistics, rights, library, cleaning, assets
 
 app = FastAPI(title="School Platform", version="0.1.0")
 
@@ -27,6 +27,9 @@ app.include_router(growth.router)
 app.include_router(ops.router)
 app.include_router(logistics.router)
 app.include_router(rights.router)
+app.include_router(library.router)
+app.include_router(cleaning.router)
+app.include_router(assets.router)
 
 
 @app.get("/api/health", tags=["health"])

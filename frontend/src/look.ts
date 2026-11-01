@@ -41,6 +41,8 @@ export const TAB_LOOK: Record<string, Look> = {
   growth: { icon: "growth", hue: "lime" },
   operations: { icon: "wrench", hue: "orange" },
   rights: { icon: "key", hue: "violet" },
+  library: { icon: "book", hue: "sky" },
+  assets: { icon: "layers", hue: "indigo" },
 };
 
 export const FACILITY_LOOK: Record<string, Look> = {

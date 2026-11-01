@@ -26,6 +26,8 @@ import BoardsCard from "./BoardsCard";
 import { org } from "./orgApi";
 import { go } from "./router";
 import RightsPage from "./Rights";
+import LibraryPage from "./Library";
+import AssetsPage from "./Assets";
 import { AreaContext, rightsIn } from "./rightsApi";
 import { href, type SchoolTab } from "./router";
 import {
@@ -58,6 +60,8 @@ const TAB_LABEL: Record<SchoolTab, string> = {
   growth: "Growth",
   operations: "Operations",
   rights: "Rights",
+  library: "Library",
+  assets: "Asset register",
 };
 
 // Which area of rights each page belongs to.
@@ -65,6 +69,7 @@ export const TAB_AREA: Record<SchoolTab, string> = {
   overview: "school", students: "students", attendance: "attendance", classes: "classes", staff: "staff", facilities: "facilities",
   sections: "setup", departments: "setup", houses: "setup", grading: "setup", calendar: "setup", policies: "setup",
   imports: "imports", logins: "logins", teaching: "teaching", "staff-day": "staff_day", growth: "growth", operations: "operations", rights: "rights",
+  library: "library", assets: "facilities",
 };
 function tabOpen(rights: Set<string>, t: SchoolTab): boolean {
   const a = TAB_AREA[t];
@@ -172,6 +177,8 @@ export default function SchoolPage({
           {campus && tab === "staff-day" && <StaffDayPage schoolId={school.id} branchId={campus.id} />}
           {campus && tab === "imports" && <BulkPage branchId={campus.id} onChanged={() => { loadClasses(); load(); }} />}
           {tab === "rights" && <RightsPage schoolId={school.id} />}
+          {tab === "library" && <LibraryPage schoolId={school.id} />}
+          {tab === "assets" && <AssetsPage schoolId={school.id} />}
               </div>
               </AreaContext.Provider>
               )}
@@ -220,7 +227,7 @@ function SchoolHero({ school, profile, onRename, onManage }: {
 }
 
 const NAV_GROUPS: { label: string; tabs: SchoolTab[] }[] = [
-  { label: "Daily", tabs: ["overview", "students", "attendance", "classes", "teaching", "staff", "staff-day", "growth", "operations", "facilities"] },
+  { label: "Daily", tabs: ["overview", "students", "attendance", "classes", "teaching", "staff", "staff-day", "growth", "operations", "library", "facilities", "assets"] },
   { label: "Set-up", tabs: ["sections", "departments", "houses", "grading", "calendar", "policies", "imports", "logins", "rights"] },
 ];
 

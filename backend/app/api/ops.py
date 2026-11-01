@@ -41,6 +41,7 @@ DESKS = {
     "transport": {"label": "Transport", "icon": "bus", "hue": "teal", "words": ["driver", "transport", "bus attendant"]},
     "gate": {"label": "Gate and security", "icon": "shield", "hue": "indigo", "words": ["security", "gate", "porter", "guard"]},
     "sickbay": {"label": "Sick bay", "icon": "stethoscope", "hue": "rose", "words": ["nurse", "matron", "health", "clinic", "doctor"]},
+    "library": {"label": "Library", "icon": "book", "hue": "sky", "words": ["librar"]},
     "kitchen": {"label": "Kitchen", "icon": "cooking-pot", "hue": "lime", "words": ["cook", "chef", "kitchen", "caterer", "catering", "steward", "dining"]},
 }
 CATEGORIES = {
@@ -1042,6 +1043,11 @@ def my_ops(school_id: uuid.UUID, user: User = Depends(current_user), db: Session
         inside = db.scalar(select(func.count()).select_from(Visitor).where(Visitor.school_id == school_id, Visitor.time_out.is_(None),
                                                                            Visitor.time_in >= start - timedelta(days=1))) or 0
         info["gate"] = {"big": str(inside), "line": f"visitor{'s' if inside != 1 else ''} inside now", "more": "Visitors' book and exit passes", "alerts": 0}
+    if "library" in member_desks:
+        from app.models import Loan
+        out_ = db.scalar(select(func.count()).select_from(Loan).where(Loan.school_id == school_id, Loan.returned_at.is_(None))) or 0
+        late = db.scalar(select(func.count()).select_from(Loan).where(Loan.school_id == school_id, Loan.returned_at.is_(None), Loan.due_on < today)) or 0
+        info["library"] = {"big": str(out_), "line": f"book{'s' if out_ != 1 else ''} on loan", "more": f"{late} overdue" if late else "None overdue", "alerts": late}
     if "sickbay" in member_desks:
         seen = db.scalar(select(func.count()).select_from(ClinicVisit).where(ClinicVisit.school_id == school_id, ClinicVisit.seen_at >= start)) or 0
         info["sickbay"] = {"big": str(seen), "line": f"visit{'s' if seen != 1 else ''} today", "more": "Visits, students lying in and medicine stock", "alerts": 0}

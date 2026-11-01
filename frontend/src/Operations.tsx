@@ -20,14 +20,16 @@ import { logi, naira, type LogiOverview } from "./logiApi";
 import { StoreBoard } from "./Store";
 import { TransportBoard } from "./Transport";
 import { AskAccess } from "./Rights";
+import { CleaningBoard } from "./Cleaning";
+import LibraryPage from "./Library";
 import { useCan } from "./rightsApi";
 
-type Seg = "overview" | "helpdesk" | "gate" | "sickbay" | "incidents" | "kitchen" | "transport" | "store" | "teams";
+type Seg = "overview" | "helpdesk" | "gate" | "sickbay" | "incidents" | "kitchen" | "transport" | "store" | "cleaning" | "teams";
 const SEGS: { key: Seg; label: string; icon: string }[] = [
   { key: "overview", label: "Overview", icon: "sparkle" }, { key: "helpdesk", label: "Helpdesk", icon: "wrench" },
   { key: "gate", label: "Gate", icon: "shield" }, { key: "sickbay", label: "Sick bay", icon: "stethoscope" },
   { key: "incidents", label: "Incidents", icon: "flame" },
-  { key: "kitchen", label: "Kitchen", icon: "cooking-pot" }, { key: "transport", label: "Transport", icon: "bus" }, { key: "store", label: "Store", icon: "store" },
+  { key: "kitchen", label: "Kitchen", icon: "cooking-pot" }, { key: "transport", label: "Transport", icon: "bus" }, { key: "store", label: "Store", icon: "store" }, { key: "cleaning", label: "Cleaning", icon: "sparkle" },
   { key: "teams", label: "Teams", icon: "users" },
 ];
 
@@ -48,6 +50,7 @@ export default function OperationsPage({ schoolId }: { schoolId: string }) {
       {seg === "kitchen" && <KitchenBoard schoolId={schoolId} />}
       {seg === "transport" && <TransportBoard schoolId={schoolId} />}
       {seg === "store" && <StoreBoard schoolId={schoolId} store="main" />}
+      {seg === "cleaning" && <CleaningBoard schoolId={schoolId} />}
       {seg === "teams" && <TeamsTab schoolId={schoolId} />}
     </div>
   );
@@ -175,6 +178,8 @@ export function DeskPage({ me, onLogout, schoolId, desk }: { me: Me; onLogout: (
         <h1 className="desk-title"><Glyph icon={d?.icon ?? "wrench"} hue={d?.hue ?? "slate"} size={48} />{d?.label ?? "Desk"}</h1>
         {desk === "gate" ? <GateBoard schoolId={schoolId} big /> : desk === "sickbay" ? <ClinicBoard schoolId={schoolId} />
           : desk === "kitchen" ? <KitchenBoard schoolId={schoolId} />
+          : desk === "library" ? <LibraryPage schoolId={schoolId} />
+          : desk === "maintenance" ? <><HelpdeskBoard schoolId={schoolId} desk={desk} /><h3 className="section-title">Cleaning</h3><CleaningBoard schoolId={schoolId} /></>
           : desk === "transport" ? <><TransportBoard schoolId={schoolId} /><h3 className="section-title">Transport jobs</h3><HelpdeskBoard schoolId={schoolId} desk={desk} /></>
           : desk === "store" ? <><StoreBoard schoolId={schoolId} store="main" /><h3 className="section-title">Requests for the store</h3><HelpdeskBoard schoolId={schoolId} desk={desk} /></>
           : <HelpdeskBoard schoolId={schoolId} desk={desk} />}

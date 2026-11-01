@@ -1093,5 +1093,11 @@ def ops_setup(school_id: uuid.UUID, user: User = Depends(current_user), db: Sess
          "detail": f"{meds} medicines · {health} health records",
          "hint": "The nurse adds medicines in Sick bay → Medicine stock, and health records from each student.", "go": "sickbay"},
     ]
+    from app.models import CleanArea, CleanDuty
+    clean_areas = db.scalar(select(func.count()).select_from(CleanArea).where(CleanArea.school_id == school_id, CleanArea.active.is_(True))) or 0
+    clean_duties = db.scalar(select(func.count()).select_from(CleanDuty).where(CleanDuty.school_id == school_id)) or 0
+    steps.append({"key": "cleaning", "label": "Cleaning places and the rota", "icon": "sparkle", "done": clean_areas > 0 and clean_duties > 0,
+                  "detail": f"{clean_areas} places, {clean_duties} duties on the rota" if clean_areas else "No cleaning places yet",
+                  "hint": "Cleaning → Places → Add from Facilities, then Cleaning → Rota.", "go": "cleaning"})
     needed = [s for s in steps if not s.get("optional")]
     return {"steps": steps, "done": sum(1 for s in needed if s["done"]), "total": len(needed)}
