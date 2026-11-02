@@ -53,6 +53,7 @@ class Student(IdMixin, TimestampMixin, Base):
 
     # The fuller profile
     photo: Mapped[str | None] = mapped_column(Text)                         # small image as a data URL
+    photo_thumb: Mapped[str | None] = mapped_column(Text)                   # tiny copy for lists (about 3 KB)
     nickname: Mapped[str | None] = mapped_column(String(60))                # what they like to be called
     religion: Mapped[str | None] = mapped_column(String(30))
     nationality: Mapped[str | None] = mapped_column(String(40))
@@ -177,3 +178,15 @@ class StudentEvent(IdMixin, TimestampMixin, Base):
     kind: Mapped[str] = mapped_column(String(20))
     text: Mapped[str] = mapped_column(String(300))
     by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class PromotionRun(IdMixin, TimestampMixin, Base):
+    """End of year: every class moved up at once. Keeps where everyone was, so it can be undone."""
+    __tablename__ = "promotion_runs"
+
+    school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"), index=True)
+    label: Mapped[str] = mapped_column(String(80))
+    by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    snapshot: Mapped[list] = mapped_column(JSON, default=list)      # [{student_id, class_id, status, left_on}]
+    summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    undone: Mapped[bool] = mapped_column(Boolean, default=False)

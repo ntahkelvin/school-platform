@@ -23,6 +23,7 @@ backend/alembic/versions/0016_logistics.py
 backend/alembic/versions/0017_rights.py
 backend/alembic/versions/0018_library.py
 backend/alembic/versions/0019_student360.py
+backend/alembic/versions/0020_promotion.py
 backend/app/__init__.py
 backend/app/api/__init__.py
 backend/app/api/academics.py
@@ -53,6 +54,7 @@ backend/app/api/staff_records.py
 backend/app/api/starter.py
 backend/app/api/structure.py
 backend/app/api/student360.py
+backend/app/api/student_year.py
 backend/app/api/students.py
 backend/app/api/teaching.py
 backend/app/api/units.py
@@ -138,6 +140,7 @@ frontend/src/Store.tsx
 frontend/src/StudentForm.tsx
 frontend/src/StudentLink.tsx
 frontend/src/StudentPage.tsx
+frontend/src/StudentYear.tsx
 frontend/src/Teaching.tsx
 frontend/src/Transport.tsx
 frontend/src/api.ts

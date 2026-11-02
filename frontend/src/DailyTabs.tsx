@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   api, errorText, ROLE_LABEL,
   type BranchDetail, type EmploymentType, type NewLogin, type SchoolClass, type StaffMember, type StaffProfileIn,
-  type SchoolStats, type StaffRole, type StudentRow, type Unit, todayLocal,
+  type SchoolStats, type StaffRole, type Unit, todayLocal,
 } from "./api";
 import { ImportButton } from "./Bulk";
 import { LoginPanel } from "./Logins";
@@ -12,10 +12,10 @@ import StudentForm from "./StudentForm";
 import { Avatar, Empty, Field, Glyph, hue, IconButton, Modal, NewLoginNotice, nicePhone, Stat } from "./ui";
 import Icon from "./Icon";
 import { departmentLook, ROLE_HUE, STAGE_LOOK, stageOf } from "./look";
-import { useRoleTools } from "./rightsApi";
+import { useCanChange, useRoleTools } from "./rightsApi";
+import { StudentListView, yapi, type ListRow } from "./StudentYear";
 
 const stageHue = (level: string) => STAGE_LOOK[stageOf(level)].hue;
-const levelOfName = (name: string) => name.replace(/\s*[A-Za-z]+$/, "").trim() || name;
 
 
 // ---------------- Students ----------------
@@ -23,24 +23,25 @@ const levelOfName = (name: string) => name.replace(/\s*[A-Za-z]+$/, "").trim() |
 export function StudentsTab({
   branch, classes, onClassesChanged,
 }: { branch: BranchDetail; classes: SchoolClass[]; onClassesChanged: () => void }) {
-  const [students, setStudents] = useState<StudentRow[] | null>(null);
+  const [rows, setRows] = useState<ListRow[] | null>(null);
   const [q, setQ] = useState("");
   const [classId, setClassId] = useState("");
   const [showLeft, setShowLeft] = useState(false);
   const [adding, setAdding] = useState(false);
   const [newLogin, setNewLogin] = useState<NewLogin | null>(null);
   const [error, setError] = useState("");
+  const canChange = useCanChange();
 
   const load = useCallback(() => {
-    api.students(branch.id, { q, class_id: classId || undefined, include_inactive: showLeft })
-      .then(setStudents)
-      .catch((err) => setError(err.message));
-  }, [branch.id, q, classId, showLeft]);
-
-  useEffect(() => {
-    const t = setTimeout(load, 250); // wait until the user stops typing
-    return () => clearTimeout(t);
-  }, [load]);
+    yapi.list(branch.school_id, branch.id, showLeft).then(setRows).catch((err) => setError(errorText(err)));
+  }, [branch.school_id, branch.id, showLeft]);
+  useEffect(load, [load]);
+  const students = useMemo(() => {
+    if (!rows) return null;
+    const t = q.trim().toLowerCase();
+    return rows.filter((r) => (!classId || r.class_id === classId)
+      && (!t || `${r.first_name} ${r.middle_name ?? ""} ${r.last_name} ${r.nickname ?? ""} ${r.admission_no}`.toLowerCase().includes(t)));
+  }, [rows, q, classId]);
 
   // Whole-school figures (they include students not yet in a class), fetched fresh.
   const [totals, setTotals] = useState<SchoolStats | null>(null);
@@ -96,49 +97,8 @@ export function StudentsTab({
         </Empty>
       )}
       {students && students.length > 0 && (
-        <div className="table-wrap people-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Student</th>
-                <th>Class</th>
-                <th className="hide-small">Gender</th>
-                {branch.has_boarding && <th className="hide-small">Day or boarding</th>}
-                {showLeft && <th>Status</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {students.map((s) => (
-                <tr key={s.id} className="clickable" onClick={() => go({ page: "student", id: s.id })}>
-                  <td>
-                    <span className="person">
-                      <Avatar name={`${s.first_name} ${s.last_name}`} size={36} />
-                      <span>
-                        <a href={href({ page: "student", id: s.id })}>{s.last_name}, {s.first_name}{s.middle_name ? ` ${s.middle_name}` : ""}</a>
-                        <span className="muted small block mono">{s.admission_no}</span>
-                      </span>
-                    </span>
-                  </td>
-                  <td>{s.class_name ? <span className="class-chip" style={hue(stageHue(levelOfName(s.class_name)))}>{s.class_name}</span> : <span className="muted">None</span>}</td>
-                  <td className="hide-small">
-                    <span className="hue-chip" style={hue(s.gender === "female" ? "pink" : "blue")}>
-                      <Icon name={s.gender === "female" ? "girls" : "boys"} size={12} stroke={2.4} />{s.gender === "female" ? "Female" : "Male"}
-                    </span>
-                  </td>
-                  {branch.has_boarding && (
-                    <td className="hide-small">
-                      {s.boarding_status === "boarder"
-                        ? <span className="hue-chip" style={hue("indigo")}><Icon name="bed" size={12} stroke={2.4} />Boarder</span>
-                        : <span className="hue-chip" style={hue("amber")}><Icon name="sun" size={12} stroke={2.4} />Day</span>}
-                    </td>
-                  )}
-                  {showLeft && <td className="capitalize">{s.status}</td>}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="muted small table-foot">{students.length} {students.length === 1 ? "student" : "students"}</p>
-        </div>
+        <StudentListView rows={students} schoolId={branch.school_id} classes={classes} canChange={canChange} hasBoarding={branch.has_boarding} showLeft={showLeft}
+                         onChanged={() => { load(); onClassesChanged(); loadTotals(); }} />
       )}
 
       {adding && (

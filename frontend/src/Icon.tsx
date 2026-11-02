@@ -8,7 +8,7 @@ import {
   HeartPulse, Hotel, House, Landmark, Languages, Laptop, Layers, LayoutGrid, Leaf, Library, Lightbulb, Mail, Map, MapPin,
   Medal, Megaphone, Mic, Microscope, Monitor, Moon, Mountain, Music, Network, NotebookPen, Palette, PartyPopper, Pencil,
   PenTool, Phone, Pi, Plane, Plus, Presentation, Puzzle, Rocket, Scale, School, ScrollText, Search, Shapes, Shield,
-  Armchair, House as HouseIcon, ChevronDown, ChevronUp, IdCard, Info, KeyRound, Printer, Trees, Lock, ShieldCheck, Shirt, ShoppingBag, Sigma, Snowflake, Soup, Sparkles, Sprout, Star, Stethoscope, Store, Sun, Swords, Tent,
+  Armchair, House as HouseIcon, ChevronDown, ChevronUp, IdCard, Info, KeyRound, Printer, Trees, Download, List as ListIcon, ArrowRight, ArrowUpRight, Lock, ShieldCheck, Shirt, ShoppingBag, Sigma, Snowflake, Soup, Sparkles, Sprout, Star, Stethoscope, Store, Sun, Swords, Tent,
   Theater, Tractor, Trash2, TrendingUp, Trophy, UserPlus, UserRound, Users, UtensilsCrossed, Volleyball, Wallet,
   Warehouse, Waves, Wrench, X, Zap, LogIn, LogOut, ScanLine, ScanQrCode, ClipboardList, FileText, Check, Undo2, Keyboard,
   Delete, CalendarX, Hourglass, Timer, Send, RefreshCw, Link, Copy, ChevronLeft, ChevronRight, UserCheck, UserX, Umbrella,
@@ -63,7 +63,7 @@ const ICONS: Record<string, LucideIcon> = {
   "user-check": UserCheck, "user-x": UserX, umbrella: Umbrella, locate: Locate, smartphone: Smartphone, "circle-check": CircleCheck,
   "circle-x": CircleX, "palm-tree": TreePalm, inbox: Inbox, settings: Settings, "calendar-range": CalendarRange, history: History,
   "staff-day": UserCheck, eye: Eye, heart: Heart, target: Target, gauge: Gauge, message: MessageCircle, flame: Flame, quote: Quote,
-  "thumbs-up": ThumbsUp, growth: Sprout, operations: Wrench, key: KeyRound, lock: Lock, "chevron-up": ChevronUp, "chevron-down": ChevronDown, "id-card": IdCard, info: Info, armchair: Armchair, home: HouseIcon, printer: Printer, trees: Trees,
+  "thumbs-up": ThumbsUp, growth: Sprout, operations: Wrench, key: KeyRound, lock: Lock, "chevron-up": ChevronUp, "chevron-down": ChevronDown, "id-card": IdCard, info: Info, armchair: Armchair, home: HouseIcon, printer: Printer, trees: Trees, download: Download, list: ListIcon, "arrow-right": ArrowRight, "arrow-up-right": ArrowUpRight,
 };
 
 export default function Icon({ name, size = 18, stroke = 1.9 }: { name: string; size?: number; stroke?: number }) {

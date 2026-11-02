@@ -15,6 +15,7 @@ import StudentForm, { checkGuardian, emptyGuardian, GuardianFields } from "./Stu
 import { records, type Item } from "./structureApi";
 import type { Insight } from "./growthApi";
 import { Avatar, Empty, Field, Glyph, hue, Modal, NewLoginNotice, Stat } from "./ui";
+import { IdCards, LeaveForm, Letter, makeThumb } from "./StudentYear";
 
 // ---------- Types ----------
 
@@ -53,7 +54,7 @@ const sapi = {
   profile: (id: string) => api.raw<Profile>("GET", `/api/students/${id}/profile`),
   meta: () => api.raw<StuMeta>("GET", "/api/student-meta"),
   personal: (id: string, body: Record<string, unknown>) => api.raw<Profile>("PUT", `/api/students/${id}/personal`, body),
-  photo: (id: string, photo: string | null) => api.raw<{ photo: string | null }>("PUT", `/api/students/${id}/photo`, { photo }),
+  photo: async (id: string, photo: string | null) => api.raw<{ photo: string | null }>("PUT", `/api/students/${id}/photo`, { photo, thumb: photo ? (await makeThumb(photo)) || null : null }),
   support: (id: string, support_needs: string | null) => api.raw("PUT", `/api/students/${id}/support`, { support_needs }),
   guardian: (id: string, link: string, body: Record<string, unknown>) => api.raw<Profile>("PUT", `/api/students/${id}/guardians/${link}`, body),
   addContact: (id: string, body: Record<string, unknown>) => api.raw<Profile>("POST", `/api/students/${id}/contacts`, body),
@@ -79,7 +80,8 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
   const [p, setP] = useState<Profile | null>(null);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
-  const [modal, setModal] = useState<null | "edit" | "personal" | "guardian" | "merit" | "photo">(null);
+  const [modal, setModal] = useState<null | "edit" | "personal" | "guardian" | "merit" | "photo" | "leave" | "card" | "transfer" | "testimonial">(null);
+  const [more, setMore] = useState(false);
   const [detail, setDetail] = useState<StudentDetail | null>(null);
   const [branch, setBranch] = useState<BranchDetail | null>(null);
   const [classes, setClasses] = useState<SchoolClass[]>([]);
@@ -110,6 +112,7 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
           <div className="hero-actions">
             {a.edit && <button className="on-band" onClick={openEdit}>Edit name, class or status</button>}
             {(a.edit || a.teacher) && <button className="on-band" onClick={() => setModal("merit")}><Icon name="star" size={14} />Give a merit</button>}
+            {a.full && <button className="on-band" onClick={() => setMore(true)}><Icon name="printer" size={14} />Print and more</button>}
           </div>
         </div>
         <div className="stu-body">
@@ -176,6 +179,20 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
       )}
       {modal === "merit" && <MeritForm p={p} onClose={() => setModal(null)} onDone={(x) => { setP(x); setModal(null); }} />}
       {modal === "photo" && <PhotoForm p={p} onClose={() => setModal(null)} onDone={(photo) => { setP({ ...p, student: { ...s, photo } }); setModal(null); }} />}
+      {more && (
+        <Modal title="Print and more" onClose={() => setMore(false)}>
+          <div className="more-grid">
+            <button onClick={() => { setMore(false); setModal("card"); }} style={hue("indigo")}><Glyph icon="id-card" hue="indigo" size={40} /><b>ID card</b><small>With photo and QR code for the gate and library</small></button>
+            <button onClick={() => { setMore(false); setModal("transfer"); }} style={hue("sky")}><Glyph icon="send" hue="sky" size={40} /><b>Transfer letter</b><small>For a student moving to another school</small></button>
+            <button onClick={() => { setMore(false); setModal("testimonial"); }} style={hue("amber")}><Glyph icon="award" hue="amber" size={40} /><b>Testimonial</b><small>Their record in brief, signed by the principal</small></button>
+            {a.edit && <button onClick={() => { setMore(false); setModal("leave"); }} style={hue(s.status === "active" ? "rose" : "green")}><Glyph icon={s.status === "active" ? "log-out" : "log-in"} hue={s.status === "active" ? "rose" : "green"} size={40} />
+              <b>{s.status === "active" ? "Leaving the school" : "Back on the roll"}</b><small>{s.status === "active" ? "Withdrawn or graduated, with the reason and next school" : "Make them an active student again"}</small></button>}
+          </div>
+        </Modal>
+      )}
+      {modal === "leave" && <LeaveForm studentId={s.id} name={s.first_name} status={s.status} onClose={() => setModal(null)} onDone={() => { setModal(null); load(); }} />}
+      {modal === "card" && <IdCards schoolId={s.school_id} query={`ids=${s.id}`} onClose={() => setModal(null)} />}
+      {(modal === "transfer" || modal === "testimonial") && <Letter studentId={s.id} kind={modal} onClose={() => setModal(null)} />}
       {newLogin && <Modal title="Parent login" onClose={() => setNewLogin(null)}><NewLoginNotice login={newLogin} onDone={() => setNewLogin(null)} /></Modal>}
     </Layout>
   );

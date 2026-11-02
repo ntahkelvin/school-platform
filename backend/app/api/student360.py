@@ -421,6 +421,7 @@ def save_personal(student_id: uuid.UUID, data: PersonalIn, user: User = Depends(
 
 class PhotoIn(BaseModel):
     photo: str | None = Field(default=None, max_length=400_000)
+    thumb: str | None = Field(default=None, max_length=20_000)   # a tiny copy for lists
 
 
 @router.put("/students/{student_id}/photo")
@@ -428,7 +429,10 @@ def save_photo(student_id: uuid.UUID, data: PhotoIn, user: User = Depends(curren
     s, _ = get_student(db, user, student_id, write=True)
     if data.photo and not data.photo.startswith("data:image/"):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose a photo")
+    if data.thumb and not data.thumb.startswith("data:image/"):
+        data.thumb = None
     s.photo = data.photo
+    s.photo_thumb = data.thumb if data.photo else None
     db.commit()
     return {"photo": s.photo}
 
@@ -479,6 +483,7 @@ class ContactIn(BaseModel):
     phone: str | None = Field(default=None, max_length=30)
     relationship: str = Field(default="Family friend", max_length=40)
     photo: str | None = Field(default=None, max_length=400_000)
+    thumb: str | None = Field(default=None, max_length=20_000)   # a tiny copy for lists
     note: str | None = Field(default=None, max_length=200)
 
 

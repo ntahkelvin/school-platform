@@ -117,6 +117,7 @@ ROUTE_AREAS: list[tuple[str, str, str]] = [
     ("structure", r"", "setup"),
     ("students", r"", "students"),
     ("student360", r"", "students"),
+    ("student_year", r"", "students"),
     ("teaching", r"", "teaching"),
     ("units", r"", "setup"),
     ("boards", r"", "school"),
