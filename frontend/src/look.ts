@@ -44,6 +44,7 @@ export const TAB_LOOK: Record<string, Look> = {
   library: { icon: "book", hue: "sky" },
   assets: { icon: "layers", hue: "indigo" },
   admissions: { icon: "user-plus", hue: "pink" },
+  timetable: { icon: "calendar-days", hue: "blue" },
 };
 
 export const FACILITY_LOOK: Record<string, Look> = {

@@ -184,6 +184,8 @@ def child(student_id: uuid.UUID, user: User = Depends(current_user), db: Session
         "journey": [{"at": e.created_at.isoformat(), "text": e.text} for e in events],
         "note_kinds": NOTE_KINDS,
     }
+    from app.api.timetable import child_timetable
+    out["timetable"] = child_timetable(db, s)
     out["highlights"] = highlights(s, out, how)
     db.commit()
     return out

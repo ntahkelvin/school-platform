@@ -26,6 +26,7 @@ backend/alembic/versions/0019_student360.py
 backend/alembic/versions/0020_promotion.py
 backend/alembic/versions/0021_family.py
 backend/alembic/versions/0022_admissions.py
+backend/alembic/versions/0023_timetable.py
 backend/app/__init__.py
 backend/app/api/__init__.py
 backend/app/api/academics.py
@@ -61,6 +62,7 @@ backend/app/api/student360.py
 backend/app/api/student_year.py
 backend/app/api/students.py
 backend/app/api/teaching.py
+backend/app/api/timetable.py
 backend/app/api/units.py
 backend/app/consolidate.py
 backend/app/core/__init__.py
@@ -150,6 +152,7 @@ frontend/src/StudentLink.tsx
 frontend/src/StudentPage.tsx
 frontend/src/StudentYear.tsx
 frontend/src/Teaching.tsx
+frontend/src/Timetable.tsx
 frontend/src/Transport.tsx
 frontend/src/api.ts
 frontend/src/dayApi.ts

@@ -7,6 +7,8 @@ import Icon from "./Icon";
 import Layout from "./Layout";
 import { href } from "./router";
 import { Avatar, Field, Glyph, hue, Modal, nicePhone } from "./ui";
+import { WeekGrid, type Grid, type Today as TodayLessons } from "./Timetable";
+import { subjectLook } from "./look";
 
 // ---------- API ----------
 
@@ -41,6 +43,7 @@ interface ChildView {
   houses: { name: string; colour: string | null; points: number; mine: boolean }[];
   family: { name: string; relationship: string; phone: string | null; can_pick_up: boolean; is_me: boolean }[];
   notes: FamilyNote[]; journey: { at: string; text: string }[]; note_kinds: Record<string, string>; highlights: Insight[];
+  timetable: (Grid & TodayLessons) | null;
 }
 
 export const fam = {
@@ -259,7 +262,7 @@ function Exeat({ c, me, onClose, onDone }: { c: ChildView; me: Me; onClose: () =
 
 // ---------- One child ----------
 
-type Tab = "overview" | "attendance" | "conduct" | "library" | "health" | "school";
+type Tab = "overview" | "timetable" | "attendance" | "conduct" | "library" | "health" | "school";
 
 export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; onLogout: () => void; studentId: string; home?: boolean }) {
   const [c, setC] = useState<ChildView | null>(null);
@@ -273,7 +276,7 @@ export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; o
   if (!c) return <Layout me={me} onLogout={onLogout} crumbs={crumbs}><div className="skeleton" aria-hidden="true"><span /><span /><span /></div></Layout>;
   const s = c.student, self = c.how === "self";
   const colour = c.placement.house?.colour || c.school.colour || "#1e63d6";
-  const tabs: [Tab, string, string][] = [["overview", self ? "My day" : "Overview", "sparkle"], ["attendance", "Attendance", "attendance"],
+  const tabs: [Tab, string, string][] = [["overview", self ? "My day" : "Overview", "sparkle"], ...(c.timetable ? [["timetable", "Timetable", "calendar-days"] as [Tab, string, string]] : []), ["attendance", "Attendance", "attendance"],
     ...(c.conduct ? [["conduct", "Merits and awards", "star"] as [Tab, string, string]] : []), ["library", "Library", "book"],
     ["health", "Health", "heart-pulse"], ["school", self ? "My school" : "Teachers and school", "classes"]];
   return (
@@ -307,6 +310,7 @@ export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; o
 
       <div className="stu-main">
         {tab === "overview" && <Overview c={c} go={setTab} />}
+        {tab === "timetable" && c.timetable && <section className="card editor tt-card"><h3 className="with-glyph"><Glyph icon="calendar-days" hue="blue" size={30} />{self ? "My week" : `${s.first_name}'s week`}</h3><WeekGrid g={c.timetable} today={new Date().getDay() - 1} /></section>}
         {tab === "attendance" && <Attendance c={c} />}
         {tab === "conduct" && c.conduct && <Conduct c={c} />}
         {tab === "library" && <Library c={c} />}
@@ -325,6 +329,13 @@ function Overview({ c, go }: { c: ChildView; go: (t: Tab) => void }) {
   return (
     <section className="stack">
       {c.highlights.length > 0 && <InsightList items={c.highlights} schoolId={c.school.id} />}
+      {c.timetable && c.timetable.today.some((p) => p.cell) && (
+        <section className="card g-card" style={hue("blue")}>
+          <h3 className="with-glyph"><Glyph icon="calendar-days" hue="blue" size={30} />{self ? "My lessons today" : "Lessons today"}</h3>
+          <ol className="today-lessons">{c.timetable.today.filter((p) => p.kind === "lesson").map((p) => <li key={p.id} className={`s-${p.state}${p.cell ? "" : " free"}`} style={p.cell ? hue(subjectLook(p.cell.subject ?? "").hue) : undefined}>
+            <span className="tl-time">{p.starts_at}</span>{p.cell ? <><b>{p.cell.subject}</b><span className="muted">{p.cell.teacher ?? ""}</span></> : <span className="muted">Free</span>}</li>)}</ol>
+        </section>
+      )}
       {pass && (
         <div className={`fam-pass s-${pass.status}`}>
           <Glyph icon="log-out" hue={pass.status === "requested" ? "amber" : "green"} size={40} />

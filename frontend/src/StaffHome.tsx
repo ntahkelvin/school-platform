@@ -14,6 +14,7 @@ import { MyLibraryCard } from "./Library";
 import { StudentLink } from "./StudentLink";
 import { LeaveWaitingCard, MyDayCard, MyDutiesCard, MyLeaveCard, MyNotesCard, ToReviewCard } from "./StaffDayMe";
 import { Avatar, Empty, Field, Glyph, hue, Modal, Stat } from "./ui";
+import { MyLessonsCard } from "./Timetable";
 
 interface Today { total: number; marked: number; present: number; absent: number }
 interface FormClass { id: string; name: string; students: number; boys: number; girls: number; today: Today }
@@ -210,6 +211,7 @@ function SchoolPortal({ s, me, reload }: { s: SchoolHome; me: Me; reload: () => 
       {error && <p className="error">{error}</p>}
 
       <MyDayCard schoolId={s.school_id} />
+      {s.teaching && <MyLessonsCard schoolId={s.school_id} />}
 
       <div className="portal-grid">
         <MyDeskCards schoolId={s.school_id} />
