@@ -16,6 +16,8 @@ import { records, type Item } from "./structureApi";
 import type { Insight } from "./growthApi";
 import { Avatar, Empty, Field, Glyph, hue, Modal, NewLoginNotice, Stat } from "./ui";
 import { IdCards, LeaveForm, Letter, makeThumb } from "./StudentYear";
+import { NoteList, type FamilyNote } from "./Family";
+import { SeenForm } from "./FamilyAdmin";
 
 // ---------- Types ----------
 
@@ -47,6 +49,7 @@ interface Profile {
   completeness: { percent: number; missing: string[] } | null;
   timeline: { at: string; kind: string; icon: string; hue: string; title: string; detail: string }[];
   insights: Insight[];
+  from_home: FamilyNote[];
 }
 interface StuMeta { merits: Record<string, { label: string; points: number }>; demerits: Record<string, { label: string; points: number }>; documents: Record<string, string>; award_levels: Record<string, string> }
 
@@ -82,6 +85,7 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
   const [tab, setTab] = useState<Tab>("overview");
   const [modal, setModal] = useState<null | "edit" | "personal" | "guardian" | "merit" | "photo" | "leave" | "card" | "transfer" | "testimonial">(null);
   const [more, setMore] = useState(false);
+  const [seen, setSeen] = useState<FamilyNote | null>(null);
   const [detail, setDetail] = useState<StudentDetail | null>(null);
   const [branch, setBranch] = useState<BranchDetail | null>(null);
   const [classes, setClasses] = useState<SchoolClass[]>([]);
@@ -154,6 +158,12 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
       </nav>
 
       <div className="stu-main">
+        {tab === "overview" && p.from_home.length > 0 && (
+          <section className="card g-card from-home" style={hue("teal")}>
+            <h3 className="with-glyph"><Glyph icon="message" hue="teal" size={30} />From home</h3>
+            <NoteList notes={p.from_home.slice(0, 3)} onSeen={setSeen} />
+          </section>
+        )}
         {tab === "overview" && <Overview p={p} go={setTab} />}
         {tab === "about" && <About p={p} onChange={setP} onEdit={() => setModal("personal")} onAddGuardian={() => setModal("guardian")} reload={load} />}
         {tab === "school" && <SchoolLife p={p} onChange={setP} />}
@@ -190,6 +200,7 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
           </div>
         </Modal>
       )}
+      {seen && <SeenForm n={seen} onClose={() => setSeen(null)} onDone={() => { setSeen(null); load(); }} />}
       {modal === "leave" && <LeaveForm studentId={s.id} name={s.first_name} status={s.status} onClose={() => setModal(null)} onDone={() => { setModal(null); load(); }} />}
       {modal === "card" && <IdCards schoolId={s.school_id} query={`ids=${s.id}`} onClose={() => setModal(null)} />}
       {(modal === "transfer" || modal === "testimonial") && <Letter studentId={s.id} kind={modal} onClose={() => setModal(null)} />}
@@ -501,7 +512,7 @@ function ClubsForm({ p, onClose, onDone }: { p: Profile; onClose: () => void; on
 function Attendance({ p }: { p: Profile }) {
   const a = p.attendance;
   const weeks = useMemo(() => {
-    const by = new Map(a.calendar.filter((c) => c.kind === "day").map((c) => [c.date, c.status]));
+    const by = new Map(a.calendar.filter((c) => c.kind === "school").map((c) => [c.date, c.status]));
     const night = new Map(a.calendar.filter((c) => c.kind === "night").map((c) => [c.date, c.status]));
     const out: { date: string; status: string | undefined; night: string | undefined }[][] = [];
     const now = new Date(); const start = new Date(now); start.setDate(now.getDate() - 41 - ((now.getDay() + 6) % 7));

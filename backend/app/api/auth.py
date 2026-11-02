@@ -50,9 +50,9 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
     """Log in with an email address or phone number, plus password."""
     identifier = form.username.strip().lower()
     phone = normalize_phone(identifier) if looks_like_phone(identifier) else None
-    user = db.scalar(select(User).where(or_(User.email == identifier, User.phone == (phone or identifier))))
+    user = db.scalar(select(User).where(or_(User.email == identifier, User.phone == (phone or identifier), User.username == identifier)))
     if not user or not user.is_active or not verify_password(form.password, user.password_hash):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong email/phone or password")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong username or password")
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
     return Token(access_token=create_access_token(str(user.id)))

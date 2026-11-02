@@ -4,7 +4,7 @@ from app.models.academics import AcademicSession, ClassSubject, SchoolClass, Stu
 from app.models.governance import Board, BoardMember
 from app.models.people import (
     BoardingStatus, ConductEntry, Gender, Student, StudentAward, StudentClub, StudentContact, StudentDocument, StudentEvent, StudentGuardian,
-    StudentNote, StudentStatus, PromotionRun,
+    StudentNote, StudentStatus, PromotionRun, FamilySettings, FamilyNote,
 )
 from app.models.structure import (
     AssessmentComponent, AssessmentScheme, Bed, Club, ClubKind, Department, DepartmentKind, EventCategory, Facility,
@@ -33,7 +33,7 @@ __all__ = [
     "AttendanceKind", "AttendanceRecord", "AttendanceStatus",
     "AcademicSession", "ClassSubject", "StudentElective", "TeachingGroup", "SchoolClass", "Subject", "Term",
     "BoardingStatus", "ConductEntry", "Gender", "Student", "StudentAward", "StudentClub", "StudentContact", "StudentDocument", "StudentEvent",
-    "StudentGuardian", "StudentNote", "StudentStatus", "PromotionRun",
+    "StudentGuardian", "StudentNote", "StudentStatus", "PromotionRun", "FamilySettings", "FamilyNote",
     "Branch", "School", "SchoolGroup", "SchoolType",
     "EmploymentType", "StaffDocument", "StaffProfile", "StaffQualification",
     "DutyAssignment", "LeaveRequest", "LessonNote", "StaffAttendance", "StaffDaySettings",

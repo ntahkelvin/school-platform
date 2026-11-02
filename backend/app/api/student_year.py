@@ -13,6 +13,7 @@ from app.api.academics import _level_order
 from app.api.deps import current_user
 from app.api.staff_day import now_wat
 from app.core import rights
+from app.api.family import student_login_active
 from app.core.db import get_db
 from app.models import (
     AttendanceRecord, Bed, Branch, ConductEntry, House, Loan, PromotionRun, School, SchoolClass, Student, StudentDocument,
@@ -202,6 +203,7 @@ def run(school_id: uuid.UUID, data: RunIn, user: User = Depends(current_user), d
             continue
         if to == "graduate":
             s.status, s.left_on, s.leave_reason = StudentStatus.graduated, today, s.leave_reason or "Finished school"
+            student_login_active(db, s, False)
             graduated += 1
             db.add(StudentEvent(student_id=s.id, kind="status", text=f"Graduated from {old} ({data.label})", by_id=user.id))
         else:
@@ -238,6 +240,7 @@ def undo(run_id: uuid.UUID, user: User = Depends(current_user), db: Session = De
         s.class_id = uuid.UUID(x["class_id"]) if x["class_id"] and x["class_id"] != "None" else None
         s.status = StudentStatus(x["status"])
         s.left_on = date.fromisoformat(x["left_on"]) if x["left_on"] else None
+        student_login_active(db, s, s.status == StudentStatus.active)
         db.add(StudentEvent(student_id=s.id, kind="class", text=f"Promotion “{r.label}” undone", by_id=user.id))
         n += 1
     r.undone = True
@@ -266,10 +269,12 @@ def leave(student_id: uuid.UUID, data: LeaveIn, user: User = Depends(current_use
     new = StudentStatus(data.status)
     if new == StudentStatus.active:
         s.status, s.left_on, s.leave_reason, s.next_school = new, None, None, None
+        student_login_active(db, s, True)
         db.add(StudentEvent(student_id=s.id, kind="status", text="Back on the roll", by_id=user.id))
     else:
         s.status, s.left_on = new, data.left_on or now_wat().date()
         s.leave_reason, s.next_school = data.reason, data.next_school
+        student_login_active(db, s, False)
         db.add(StudentEvent(student_id=s.id, kind="status", text=("Graduated" if new == StudentStatus.graduated else "Left the school")
                             + (f": {data.reason}" if data.reason else "") + (f" (to {data.next_school})" if data.next_school else ""), by_id=user.id))
         # Free their bed and take them off bus routes.

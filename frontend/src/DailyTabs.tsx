@@ -14,6 +14,8 @@ import Icon from "./Icon";
 import { departmentLook, ROLE_HUE, STAGE_LOOK, stageOf } from "./look";
 import { useCanChange, useRoleTools } from "./rightsApi";
 import { StudentListView, yapi, type ListRow } from "./StudentYear";
+import { fam } from "./Family";
+import { FromHome } from "./FamilyAdmin";
 
 const stageHue = (level: string) => STAGE_LOOK[stageOf(level)].hue;
 
@@ -31,6 +33,10 @@ export function StudentsTab({
   const [newLogin, setNewLogin] = useState<NewLogin | null>(null);
   const [error, setError] = useState("");
   const canChange = useCanChange();
+  const [homeMsgs, setHomeMsgs] = useState<number | null>(null);
+  const [showHome, setShowHome] = useState(false);
+  const loadHome = useCallback(() => { fam.schoolNotes(branch.school_id).then((l) => setHomeMsgs(l.filter((n) => !n.seen_at).length)).catch(() => setHomeMsgs(null)); }, [branch.school_id]);
+  useEffect(loadHome, [loadHome]);
 
   const load = useCallback(() => {
     yapi.list(branch.school_id, branch.id, showLeft).then(setRows).catch((err) => setError(errorText(err)));
@@ -72,6 +78,7 @@ export function StudentsTab({
           <input type="checkbox" checked={showLeft} onChange={(e) => setShowLeft(e.target.checked)} />
           Include students who left
         </label>
+        {homeMsgs !== null && <button className={`with-icon${homeMsgs ? " accent-soft" : ""}`} onClick={() => setShowHome(true)}><Icon name="message" size={15} />From home{homeMsgs ? <span className="count-badge">{homeMsgs}</span> : null}</button>}
         <ImportButton branchId={branch.id} kind="students" onDone={() => { load(); onClassesChanged(); }} />
         <button className="primary with-icon" onClick={() => setAdding(true)}><Icon name="plus" size={16} />Add student</button>
       </div>
@@ -124,6 +131,7 @@ export function StudentsTab({
           <NewLoginNotice login={newLogin} onDone={() => setNewLogin(null)} />
         </Modal>
       )}
+      {showHome && <FromHome schoolId={branch.school_id} onClose={() => { setShowHome(false); loadHome(); }} />}
     </section>
   );
 }

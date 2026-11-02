@@ -24,6 +24,7 @@ backend/alembic/versions/0017_rights.py
 backend/alembic/versions/0018_library.py
 backend/alembic/versions/0019_student360.py
 backend/alembic/versions/0020_promotion.py
+backend/alembic/versions/0021_family.py
 backend/app/__init__.py
 backend/app/api/__init__.py
 backend/app/api/academics.py
@@ -37,6 +38,7 @@ backend/app/api/crud.py
 backend/app/api/dashboard.py
 backend/app/api/deps.py
 backend/app/api/electives.py
+backend/app/api/family.py
 backend/app/api/growth.py
 backend/app/api/imports.py
 backend/app/api/library.py
@@ -102,6 +104,8 @@ frontend/src/DailyTabs.tsx
 frontend/src/Dashboard.tsx
 frontend/src/Electives.tsx
 frontend/src/FacilitiesTab.tsx
+frontend/src/Family.tsx
+frontend/src/FamilyAdmin.tsx
 frontend/src/GateDesk.tsx
 frontend/src/GradingCards.tsx
 frontend/src/Growth.tsx

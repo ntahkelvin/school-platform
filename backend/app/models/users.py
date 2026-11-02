@@ -32,11 +32,12 @@ class Role(str, enum.Enum):
 
 class User(IdMixin, TimestampMixin, Base):
     __tablename__ = "users"
-    __table_args__ = (CheckConstraint("email IS NOT NULL OR phone IS NOT NULL", name="user_has_contact"),)
+    __table_args__ = (CheckConstraint("email IS NOT NULL OR phone IS NOT NULL OR username IS NOT NULL", name="user_has_contact"),)
 
     full_name: Mapped[str] = mapped_column(String(200))
     email: Mapped[str | None] = mapped_column(String(255), unique=True)
     phone: Mapped[str | None] = mapped_column(String(32), unique=True)
+    username: Mapped[str | None] = mapped_column(String(60), unique=True)   # students log in with this (their admission number)
     password_hash: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Set when someone else chose the password (a new login or a reset): they pick their own at next login.

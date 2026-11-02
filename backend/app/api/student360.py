@@ -160,7 +160,7 @@ def attendance_summary(db: Session, s: Student) -> dict:
     today = now_wat().date()
     since = today - timedelta(days=90)
     rows = list(db.scalars(select(AttendanceRecord).where(AttendanceRecord.student_id == s.id, AttendanceRecord.on_date >= since).order_by(AttendanceRecord.on_date)))
-    day = [r for r in rows if r.kind.value == "day"]
+    day = [r for r in rows if r.kind.value == "school"]
     def rate(rs):
         return round(100 * sum(1 for r in rs if r.status in (AttendanceStatus.present, AttendanceStatus.late)) / len(rs)) if rs else None
     last30 = [r for r in day if r.on_date >= today - timedelta(days=30)]
@@ -282,6 +282,9 @@ def profile(student_id: uuid.UUID, user: User = Depends(current_user), db: Sessi
         "documents": [{"id": str(d.id), "kind": d.kind, "label": DOC_KINDS.get(d.kind, d.kind), "filename": d.filename, "size": d.size,
                        "at": d.created_at.isoformat(), "by": name_of(db, d.uploaded_by_id)} for d in docs] if a.full else None,
     }
+    from app.api.family import note_out
+    from app.models import FamilyNote
+    out["from_home"] = [note_out(db, n) for n in db.scalars(select(FamilyNote).where(FamilyNote.student_id == s.id).order_by(FamilyNote.created_at.desc()).limit(8))]
     out["completeness"] = completeness(s, fam, {d.kind for d in docs}, health) if a.full else None
     out["timeline"] = timeline(db, s, a, events, visits, incidents, passes, visitors, loans, books, cond, awards, notes)
     out["insights"] = insights(s, out, today)
@@ -305,7 +308,7 @@ def timeline(db: Session, s: Student, a: Access, events, visits, incidents, pass
     items: list[dict] = []
     add = lambda at, kind, icon, hue, title, detail="": items.append({"at": at if isinstance(at, str) else at.isoformat(), "kind": kind, "icon": icon, "hue": hue, "title": title, "detail": detail})
     for e in events:
-        add(e.created_at, "event", {"admitted": "sparkle", "class": "classes", "boarding": "bed", "status": "flag"}.get(e.kind, "history"), "indigo", e.text, name_of(db, e.by_id) or "")
+        add(e.created_at, "event", {"admitted": "sparkle", "class": "classes", "boarding": "bed", "status": "flag", "family": "message"}.get(e.kind, "history"), "indigo", e.text, name_of(db, e.by_id) or "")
     if s.admitted_on and not any(e.kind == "admitted" for e in events):
         add(datetime.combine(s.admitted_on, datetime.min.time(), tzinfo=timezone.utc), "event", "sparkle", "indigo", f"Admitted{' into ' + s.entry_class if s.entry_class else ''}")
     if a.health:

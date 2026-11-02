@@ -2720,3 +2720,127 @@ button.danger-soft { background: color-mix(in srgb, var(--danger) 10%, var(--sur
   .stu-table .person { gap: 8px; }
   .stu-table .person a { overflow-wrap: anywhere; }
 }
+
+/* ---------- Family portal (parents and students) ---------- */
+.small-btn { padding: 5px 11px; font-size: 13px; border-radius: 9px; }
+.count-badge { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 99px; background: var(--h-red); color: #fff; font-size: 11.5px; font-weight: 800; }
+.danger-text { color: var(--danger); font-weight: 600; }
+.fam-hero { position: relative; overflow: hidden; display: flex; align-items: center; gap: 18px; padding: 26px 24px; border-radius: 22px; margin-bottom: 14px; color: #fff;
+  background: linear-gradient(120deg, var(--school) 0%, color-mix(in srgb, var(--school) 55%, #000) 100%); box-shadow: 0 14px 34px -18px var(--school); }
+.fam-logo { position: relative; flex: none; width: 66px; height: 66px; border-radius: 50%; object-fit: contain; background: #fff; padding: 4px; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+.fam-logo.sm { width: 40px; height: 40px; padding: 2px; }
+.fam-hello { position: relative; min-width: 0; }
+.fam-hello small { opacity: .85; font-weight: 600; letter-spacing: .02em; }
+.fam-hello h1 { margin: 2px 0 4px; font-size: clamp(22px, 5vw, 30px); line-height: 1.15; }
+.fam-hello p { margin: 0; opacity: .92; }
+.fam-welcome { display: flex; gap: 10px; align-items: flex-start; padding: 12px 16px; border-radius: 16px; margin: 0 0 14px; background: color-mix(in srgb, var(--h-amber) 13%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--h-amber) 35%, var(--border)); font-weight: 500; }
+.fam-welcome svg { flex: none; color: var(--h-amber); margin-top: 2px; }
+.fam-kids { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.fam-kid { display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 20px; background: var(--surface); border: 1px solid var(--border); border-top: 5px solid var(--hc); box-shadow: var(--shadow); }
+.fam-kid-main { display: flex; align-items: center; gap: 14px; color: inherit; text-decoration: none; }
+.fam-kid-main > svg { margin-left: auto; color: var(--muted); flex: none; }
+.fam-kid-photo { position: relative; flex: none; border-radius: 50%; box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--hc); }
+.fam-photo { display: block; border-radius: 50%; object-fit: cover; }
+.fam-cake { position: absolute; right: -6px; bottom: -4px; font-size: 22px; }
+.fam-kid-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.fam-kid-text > b { font-size: 21px; line-height: 1.1; }
+.fam-kid-text > small { color: var(--muted); }
+.fam-kid-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; align-items: center; }
+.fam-today { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px; background: var(--tint); color: var(--ink); font-weight: 700; font-size: 14px; }
+.fam-today .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--hue); box-shadow: 0 0 0 4px color-mix(in srgb, var(--hue) 25%, transparent); flex: none; }
+.fam-today.big { display: inline-flex; margin-top: 10px; }
+.fam-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.fam-nums span { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 8px 4px; border-radius: 14px; background: var(--tint); color: var(--ink); font-size: 11.5px; font-weight: 600; line-height: 1.2; }
+.fam-nums b { font-size: 22px; font-weight: 800; }
+.fam-award { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13.5px; font-weight: 600; color: var(--h-amber); }
+.fam-tell { align-self: stretch; justify-content: center; }
+.fam-contact { padding: 16px; display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.fam-contact .row { align-items: center; gap: 12px; }
+.fam-contact-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.fam-note-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.fam-note-list li { display: flex; gap: 12px; padding: 12px; border-radius: 14px; background: var(--wash); border: 1px solid var(--line); }
+.fam-note-list li.new { background: var(--tint); border-left: 4px solid var(--hue); }
+.fam-note-list p { margin: 0 0 3px; }
+.fam-note-emoji { font-size: 26px; line-height: 1; flex: none; }
+.fam-note-text { font-size: 15px; }
+.fam-seen { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--h-green); font-weight: 600; }
+.fam-kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.fam-kinds button { display: flex; align-items: center; gap: 8px; padding: 12px; border-radius: 14px; background: var(--surface); border: 1.5px solid var(--line); font-weight: 600; text-align: left; }
+.fam-kinds button span { font-size: 22px; }
+.fam-kinds button.on { background: var(--tint); border-color: var(--hue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--hue) 20%, transparent); }
+.fam-sent { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 10px 0; }
+.fam-sent > span { font-size: 54px; animation: pop .4s ease; }
+.fam-sent h3 { margin: 0; }
+.fam-pass { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 18px; background: color-mix(in srgb, var(--h-green) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--h-green) 35%, var(--border)); }
+.fam-pass.s-requested { background: color-mix(in srgb, var(--h-amber) 11%, var(--surface)); border-color: color-mix(in srgb, var(--h-amber) 40%, var(--border)); }
+.fam-pass > div { flex: 1; min-width: 0; }
+.fam-code { font-family: ui-monospace, monospace; font-size: 24px; font-weight: 800; letter-spacing: .15em; padding: 8px 14px; border-radius: 12px; background: var(--surface); border: 2px dashed var(--h-green); color: var(--h-green); }
+.fam-league { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.fam-league li { display: grid; grid-template-columns: 30px minmax(0, 150px) 1fr 44px; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 12px; }
+.fam-league li.mine { background: color-mix(in srgb, var(--hc) 14%, var(--surface)); font-weight: 700; }
+.fam-rank { font-size: 18px; text-align: center; }
+.fam-hname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fam-bar { height: 12px; border-radius: 99px; background: var(--border); overflow: hidden; }
+.fam-bar span { display: block; height: 100%; border-radius: 99px; background: var(--hc); }
+.fam-league b { text-align: right; }
+.fam-journey { list-style: none; margin: 0; padding: 0 0 0 14px; border-left: 3px solid color-mix(in srgb, var(--h-indigo) 30%, var(--border)); display: flex; flex-direction: column; gap: 10px; }
+.fam-journey li { position: relative; display: flex; flex-direction: column; }
+.fam-journey li::before { content: ""; position: absolute; left: -21px; top: 4px; width: 11px; height: 11px; border-radius: 50%; background: var(--h-indigo); border: 2px solid var(--surface); }
+.fam-awards { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.fam-award-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; padding: 16px 10px; border-radius: 18px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--h-amber) 18%, var(--surface)), var(--surface)); border: 1px solid color-mix(in srgb, var(--h-amber) 35%, var(--border)); }
+.fam-award-card span { font-size: 34px; }
+.fam-award-card small { color: var(--muted); }
+.fam-shelf { display: flex; flex-wrap: wrap; gap: 8px; }
+.fam-book { display: flex; flex-direction: column; justify-content: flex-end; width: 116px; min-height: 140px; padding: 10px; border-radius: 4px 12px 12px 4px; color: #fff;
+  background: linear-gradient(100deg, color-mix(in srgb, var(--hue) 70%, #000) 0 8px, var(--hue) 8px); box-shadow: 0 6px 14px -8px var(--hue); }
+.fam-book b { font-size: 13.5px; line-height: 1.2; }
+.fam-book small { opacity: .85; font-size: 11.5px; margin-top: 4px; }
+.fam-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 0; }
+.fam-facts div { padding: 10px 12px; border-radius: 12px; background: var(--wash); }
+.fam-facts dt { font-size: 12px; color: var(--muted); font-weight: 600; }
+.fam-facts dd { margin: 2px 0 0; font-weight: 700; }
+.fam-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.fam-person { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); }
+.fam-person span { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.fam-person small { color: var(--muted); }
+.fam-person > svg { color: var(--muted); }
+.fam-subjects { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.fam-subjects li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--wash); }
+.fam-subjects small { width: 100%; }
+.from-home { margin-bottom: 14px; }
+/* School side */
+.fa-card { display: flex; flex-direction: column; gap: 14px; }
+.fa-head { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.fa-head .grow { min-width: 220px; }
+.fa-rings { display: flex; flex-wrap: wrap; gap: 10px; }
+.fa-ring { display: flex; align-items: center; gap: 10px; padding: 8px 14px 8px 8px; border-radius: 16px; background: var(--tint); }
+.fa-ring > span:last-child { display: flex; flex-direction: column; }
+.fa-ring small { color: var(--muted); font-size: 12.5px; }
+.fa-table { max-height: 340px; overflow-y: auto; }
+.fa-slip-btns { display: flex; gap: 6px; justify-content: flex-end; }
+.fa-toggle { display: flex; flex-direction: row; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); cursor: pointer; }
+.fa-toggle input { margin-top: 3px; }
+.fa-toggle span { display: flex; flex-direction: column; }
+.fa-toggle small { color: var(--muted); }
+.slips { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4mm; }
+.slip { --card: #0f7a4f; border: 0.3mm dashed #999; border-radius: 3mm; overflow: hidden; break-inside: avoid; font-size: 3.2mm; color: #111; background: #fff; }
+.slip-head { display: flex; align-items: center; gap: 2mm; padding: 2mm 3mm; background: var(--card); color: #fff; }
+.slip-head img { width: 6mm; height: 6mm; border-radius: 50%; background: #fff; object-fit: contain; }
+.slip-head b { flex: 1; font-size: 3.3mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slip-head span { font-size: 2.6mm; text-transform: uppercase; letter-spacing: .3mm; font-weight: 700; }
+.slip-body { padding: 2.5mm 3.5mm; }
+.slip-to { margin: 0 0 1.5mm; line-height: 1.35; }
+.slip ol { margin: 0; padding-left: 4.5mm; display: flex; flex-direction: column; gap: 0.8mm; }
+.slip-big { font-size: 4mm; letter-spacing: .2mm; }
+.slip-foot { padding: 1.2mm 3mm; font-size: 2.6mm; color: #555; border-top: 0.2mm solid #e3e6ea; }
+@media (max-width: 600px) {
+  .fam-hero { padding: 20px 16px; gap: 12px; }
+  .fam-logo { width: 50px; height: 50px; }
+  .fam-kids { grid-template-columns: 1fr; }
+  .fam-league li { grid-template-columns: 26px minmax(0, 1fr) 70px 36px; gap: 6px; }
+  .slips { grid-template-columns: 1fr; }
+  .fam-code { font-size: 18px; padding: 6px 10px; }
+  .fam-pass { flex-wrap: wrap; }
+}

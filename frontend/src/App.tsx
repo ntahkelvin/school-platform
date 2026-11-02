@@ -17,6 +17,7 @@ import { DeskPage } from "./Operations";
 import { go, useRoute, type BranchTab } from "./router";
 import { cache, isNetworkError } from "./offline";
 import { MeContext, opensSchool, stopSeeAs } from "./rightsApi";
+import { ChildPage, FamilyHomePage } from "./Family";
 
 export default function App() {
   const [me, setMe] = useState<Me | null>(null);
@@ -63,7 +64,10 @@ export default function App() {
   const isStaff = me.memberships.some((m) => STAFF.includes(m.role));
   // Anyone with a 'see' right in a school can open that school's pages (which pages: their rights decide).
   const runs = new Set(Object.keys(me.rights ?? {}).filter((sid) => opensSchool(me, sid)));
+  if (route.page === "child") return <ChildPage key={route.id} {...common} studentId={route.id} />;
   if (!isOwner && !isStaff && isBoard) return <BoardView {...common} />;
+  // Parents and students: their own family portal.
+  if (!isOwner && !isStaff && me.memberships.some((m) => m.role === "parent" || m.role === "student")) return <FamilyHomePage {...common} />;
   if (!isOwner && isStaff) {
     // Staff: their own portal; principals, vice principals and the IT team can also open their school's pages.
     if (route.page === "school" && runs.has(route.id)) return <SchoolPage key={route.id} {...common} schoolId={route.id} tab={route.tab} />;

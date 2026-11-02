@@ -34,7 +34,7 @@ export default function Login({ onLoggedIn }: { onLoggedIn: (me: Me) => void }) 
         <div className="brand">School Platform</div>
         <h1>Log in</h1>
         <label>
-          Email or phone number
+          Phone, email or admission number
           <input value={identifier} onChange={(e) => setIdentifier(e.target.value)} autoComplete="username" />
         </label>
         <label>

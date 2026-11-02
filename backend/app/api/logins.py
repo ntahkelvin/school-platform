@@ -68,7 +68,7 @@ def _out(db: Session, school_id: uuid.UUID, user: User, roles: set[Role], titles
     if Role.board_member in roles and not staffish:
         kind = "board"
     return LoginOut(
-        user_id=user.id, full_name=user.full_name, title=titles.get(user.id), username=user.phone or user.email or "",
+        user_id=user.id, full_name=user.full_name, title=titles.get(user.id), username=user.phone or user.email or user.username or "",
         phone=user.phone, email=user.email, roles=sorted(ROLE_LABEL[r] for r in roles), kind=kind,
         is_active=user.is_active, must_change_password=user.must_change_password, last_login_at=user.last_login_at,
         is_admin=Role.owner in roles or _is_owner(db, user.id),
@@ -141,7 +141,7 @@ def reset_password(school_id: uuid.UUID, user_id: uuid.UUID, data: ResetIn,
     person.must_change_password = True
     person.is_active = True
     db.commit()
-    return ResetOut(name=person.full_name, username=person.phone or person.email or "", password=password)
+    return ResetOut(name=person.full_name, username=person.phone or person.email or person.username or "", password=password)
 
 
 class ActiveIn(BaseModel):

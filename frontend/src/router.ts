@@ -7,6 +7,7 @@ export type Route =
   | { page: "school"; id: string; tab: SchoolTab }
   | { page: "branch"; id: string; tab: BranchTab }
   | { page: "student"; id: string }
+  | { page: "child"; id: string }
   | { page: "org"; id: string }
   | { page: "board" }
   | { page: "staff" }
@@ -35,6 +36,7 @@ export function parse(hash: string): Route {
     return { page: "school", id: parts[1], tab };
   }
   if (parts[0] === "student" && parts[1]) return { page: "student", id: parts[1] };
+  if (parts[0] === "child" && parts[1]) return { page: "child", id: parts[1] };
   if (parts[0] === "org" && parts[1]) return { page: "org", id: parts[1] };
   if (parts[0] === "board") return { page: "board" };
   if (parts[0] === "staff") return { page: "staff" };
@@ -61,6 +63,8 @@ export function href(route: Route): string {
       return `#/school/${route.id}/${route.tab}`;
     case "student":
       return `#/student/${route.id}`;
+    case "child":
+      return `#/child/${route.id}`;
     case "org":
       return `#/org/${route.id}`;
     case "board":

@@ -5,9 +5,9 @@ parent login can see every child, even across branches and schools.
 """
 import enum
 import uuid
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import JSON, Boolean, Date, Enum, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Date, DateTime, Enum, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -190,3 +190,33 @@ class PromotionRun(IdMixin, TimestampMixin, Base):
     snapshot: Mapped[list] = mapped_column(JSON, default=list)      # [{student_id, class_id, status, left_on}]
     summary: Mapped[dict] = mapped_column(JSON, default=dict)
     undone: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class FamilySettings(IdMixin, TimestampMixin, Base):
+    """What parents and students can do in their portal at one school."""
+    __tablename__ = "family_settings"
+
+    school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"), unique=True)
+    student_logins: Mapped[bool] = mapped_column(Boolean, default=True)
+    student_from_level: Mapped[str] = mapped_column(String(20), default="JSS 1")    # younger children use their parent's login
+    parents_see_sickbay: Mapped[bool] = mapped_column(Boolean, default=True)
+    parents_see_conduct: Mapped[bool] = mapped_column(Boolean, default=True)
+    welcome: Mapped[str | None] = mapped_column(String(600))
+
+
+class FamilyNote(IdMixin, TimestampMixin, Base):
+    """A parent telling the school something: my child is away or sick, someone else is collecting them."""
+    __tablename__ = "family_notes"
+
+    school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"), index=True)
+    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), index=True)
+    by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    kind: Mapped[str] = mapped_column(String(15))                 # away, sick, collect, other
+    from_date: Mapped[date] = mapped_column(Date)
+    to_date: Mapped[date | None] = mapped_column(Date)
+    text: Mapped[str] = mapped_column(String(600))
+    collector: Mapped[str | None] = mapped_column(String(120))     # who is collecting, for "collect"
+    collector_phone: Mapped[str | None] = mapped_column(String(32))
+    seen_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reply: Mapped[str | None] = mapped_column(String(400))

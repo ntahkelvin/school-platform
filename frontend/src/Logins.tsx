@@ -7,6 +7,8 @@ import { rightsApi, startSeeAs, useCan, useMe } from "./rightsApi";
 import type { Hue } from "./look";
 import { Avatar, Empty, Field, Glyph, hue, Modal, nicePhone, Stat } from "./ui";
 
+import { FamilyLogins } from "./FamilyAdmin";
+
 export function whenLoggedIn(iso: string | null): string {
   if (!iso) return "Never logged in";
   const d = new Date(iso), days = Math.floor((Date.now() - d.getTime()) / 86400000);
@@ -165,6 +167,7 @@ export default function LoginsPage({ schoolId }: { schoolId: string }) {
           </span>
         </div>
       </div>
+      <FamilyLogins schoolId={schoolId} />
       {list && (
         <div className="stat-strip">
           <Stat icon="users" hue="indigo" value={list.length} label="logins" />
@@ -211,7 +214,7 @@ export default function LoginsPage({ schoolId }: { schoolId: string }) {
                           </span>
                         </span>
                       </td>
-                      <td className="mono small">{nicePhone(l.phone) || l.email}</td>
+                      <td className="mono small">{nicePhone(l.phone) || l.email || l.username}</td>
                       <td className="hide-small"><span className="hue-chip" style={hue(KIND[l.kind]?.hue ?? "slate")}>{l.roles.join(", ")}</span></td>
                       <td className="hide-small"><span className="hue-chip" style={hue(st.hue)}>{st.label}</span></td>
                       <td className="nowrap"><span className="small link-like">Manage</span></td>
