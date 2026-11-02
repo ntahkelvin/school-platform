@@ -18,6 +18,7 @@ import { go, useRoute, type BranchTab } from "./router";
 import { cache, isNetworkError } from "./offline";
 import { MeContext, opensSchool, stopSeeAs } from "./rightsApi";
 import { ChildPage, FamilyHomePage } from "./Family";
+import { ApplyPage } from "./Apply";
 
 export default function App() {
   const [me, setMe] = useState<Me | null>(null);
@@ -49,6 +50,8 @@ export default function App() {
 
   // The gate kiosk works without anyone logged in.
   if (route.page === "kiosk") return <KioskPage schoolId={route.school} token={route.token} />;
+  // The admissions form is public: families apply without a login.
+  if (route.page === "apply") return <ApplyPage code={route.code} />;
   if (checking) return <div className="center muted">Loading…</div>;
   if (!me) return <Login onLoggedIn={setMe} />;
 

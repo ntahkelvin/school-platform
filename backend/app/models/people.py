@@ -220,3 +220,80 @@ class FamilyNote(IdMixin, TimestampMixin, Base):
     seen_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reply: Mapped[str | None] = mapped_column(String(400))
+
+
+class AdmissionSettings(IdMixin, TimestampMixin, Base):
+    """How a school takes in new students: the public form, the entrance test and offers."""
+    __tablename__ = "admission_settings"
+
+    school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"), unique=True)
+    is_open: Mapped[bool] = mapped_column(Boolean, default=True)
+    code: Mapped[str] = mapped_column(String(40), unique=True)                # the secret part of the public form's address
+    session_label: Mapped[str | None] = mapped_column(String(30))            # "2027/2028"
+    levels: Mapped[list] = mapped_column(JSON, default=list)                  # levels taking new students, e.g. ["JSS 1", "SS 1"]
+    intro: Mapped[str | None] = mapped_column(String(1000))
+    form_fee: Mapped[int | None] = mapped_column(Integer)                     # naira, for information (paid at the school)
+    test_on: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    test_venue: Mapped[str | None] = mapped_column(String(150))
+    test_subjects: Mapped[list] = mapped_column(JSON, default=list)           # ["English", "Mathematics", "General paper"]
+    pass_mark: Mapped[int | None] = mapped_column(Integer)                    # percent
+    offer_days: Mapped[int] = mapped_column(Integer, default=14)              # days a family has to accept
+
+
+class Application(IdMixin, TimestampMixin, Base):
+    """A child applying to join the school, from form to enrolment."""
+    __tablename__ = "applications"
+    __table_args__ = (UniqueConstraint("school_id", "number", name="uq_application_number"),)
+
+    school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"), index=True)
+    number: Mapped[str] = mapped_column(String(30))
+    track_code: Mapped[str] = mapped_column(String(12))                       # the family uses this to check progress
+    status: Mapped[str] = mapped_column(String(15), default="new", index=True)
+    source: Mapped[str] = mapped_column(String(10), default="online")         # online, office
+    first_name: Mapped[str] = mapped_column(String(80))
+    middle_name: Mapped[str | None] = mapped_column(String(80))
+    last_name: Mapped[str] = mapped_column(String(80))
+    gender: Mapped[str] = mapped_column(String(10))
+    date_of_birth: Mapped[date | None] = mapped_column(Date)
+    level: Mapped[str] = mapped_column(String(20))
+    boarding: Mapped[bool] = mapped_column(Boolean, default=False)
+    previous_school: Mapped[str | None] = mapped_column(String(150))
+    last_class: Mapped[str | None] = mapped_column(String(40))
+    state_of_origin: Mapped[str | None] = mapped_column(String(50))
+    lga: Mapped[str | None] = mapped_column(String(80))
+    religion: Mapped[str | None] = mapped_column(String(30))
+    photo: Mapped[str | None] = mapped_column(Text)
+    allergies: Mapped[str | None] = mapped_column(String(300))
+    conditions: Mapped[str | None] = mapped_column(String(300))
+    support_needs: Mapped[str | None] = mapped_column(String(600))
+    parent_name: Mapped[str] = mapped_column(String(150))
+    parent_relationship: Mapped[str] = mapped_column(String(30), default="Parent")
+    parent_phone: Mapped[str] = mapped_column(String(32))
+    parent_email: Mapped[str | None] = mapped_column(String(255))
+    parent_occupation: Mapped[str | None] = mapped_column(String(100))
+    home_address: Mapped[str | None] = mapped_column(String(300))
+    parent2_name: Mapped[str | None] = mapped_column(String(150))
+    parent2_relationship: Mapped[str | None] = mapped_column(String(30))
+    parent2_phone: Mapped[str | None] = mapped_column(String(32))
+    sibling_note: Mapped[str | None] = mapped_column(String(200))             # brothers or sisters already here
+    heard_from: Mapped[str | None] = mapped_column(String(60))
+    scores: Mapped[dict] = mapped_column(JSON, default=dict)                   # {"English": 72, "Mathematics": 65}
+    score_total: Mapped[int | None] = mapped_column(Integer)                  # percent
+    interview: Mapped[str | None] = mapped_column(String(1000))
+    staff_note: Mapped[str | None] = mapped_column(String(1000))
+    offer_class_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("classes.id", ondelete="SET NULL"))
+    offer_expires: Mapped[date | None] = mapped_column(Date)
+    offer_note: Mapped[str | None] = mapped_column(String(600))
+    student_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("students.id", ondelete="SET NULL"))
+    history: Mapped[list] = mapped_column(JSON, default=list)                  # [{at, text, by}]
+
+
+class ApplicationDoc(IdMixin, TimestampMixin, Base):
+    __tablename__ = "application_docs"
+
+    application_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("applications.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(30))
+    filename: Mapped[str] = mapped_column(String(200))
+    content_type: Mapped[str] = mapped_column(String(100))
+    size: Mapped[int] = mapped_column(Integer)
+    data: Mapped[bytes] = mapped_column(LargeBinary)

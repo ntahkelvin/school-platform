@@ -8,6 +8,7 @@ export type Route =
   | { page: "branch"; id: string; tab: BranchTab }
   | { page: "student"; id: string }
   | { page: "child"; id: string }
+  | { page: "apply"; code: string }
   | { page: "org"; id: string }
   | { page: "board" }
   | { page: "staff" }
@@ -23,10 +24,10 @@ const TABS: BranchTab[] = ["students", "classes", "staff", "attendance", "facili
 
 export type SchoolTab =
   | "overview" | "students" | "attendance" | "classes" | "staff" | "facilities"
-  | "sections" | "departments" | "houses" | "grading" | "calendar" | "policies" | "imports" | "logins" | "teaching" | "staff-day" | "growth" | "operations" | "rights" | "library" | "assets";
+  | "sections" | "departments" | "houses" | "grading" | "calendar" | "policies" | "imports" | "logins" | "teaching" | "staff-day" | "growth" | "operations" | "rights" | "library" | "assets" | "admissions";
 export const SCHOOL_TABS: SchoolTab[] = [
   "overview", "students", "attendance", "classes", "staff", "facilities",
-  "sections", "departments", "houses", "grading", "calendar", "policies", "imports", "logins", "teaching", "staff-day", "growth", "operations", "rights", "library", "assets",
+  "sections", "departments", "houses", "grading", "calendar", "policies", "imports", "logins", "teaching", "staff-day", "growth", "operations", "rights", "library", "assets", "admissions",
 ];
 
 export function parse(hash: string): Route {
@@ -37,6 +38,7 @@ export function parse(hash: string): Route {
   }
   if (parts[0] === "student" && parts[1]) return { page: "student", id: parts[1] };
   if (parts[0] === "child" && parts[1]) return { page: "child", id: parts[1] };
+  if (parts[0] === "apply" && parts[1]) return { page: "apply", code: parts[1] };
   if (parts[0] === "org" && parts[1]) return { page: "org", id: parts[1] };
   if (parts[0] === "board") return { page: "board" };
   if (parts[0] === "staff") return { page: "staff" };
@@ -65,6 +67,8 @@ export function href(route: Route): string {
       return `#/student/${route.id}`;
     case "child":
       return `#/child/${route.id}`;
+    case "apply":
+      return `#/apply/${route.code}`;
     case "org":
       return `#/org/${route.id}`;
     case "board":
