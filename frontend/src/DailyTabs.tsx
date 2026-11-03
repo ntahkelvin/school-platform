@@ -14,6 +14,7 @@ import Icon from "./Icon";
 import { departmentLook, ROLE_HUE, STAGE_LOOK, stageOf } from "./look";
 import { rightsIn, useCanChange, useMe, useRoleTools } from "./rightsApi";
 import { WorriesPanel } from "./StudentPortal";
+import { SubjectChoicesPanel } from "./Records";
 import { StudentListView, yapi, type ListRow } from "./StudentYear";
 import { fam } from "./Family";
 import { FromHome } from "./FamilyAdmin";
@@ -35,7 +36,7 @@ export function StudentsTab({
   const [newLogin, setNewLogin] = useState<NewLogin | null>(null);
   const [error, setError] = useState("");
   const canChange = useCanChange();
-  const [view, setView] = useState<"list" | "profiles" | "worries">("list");
+  const [view, setView] = useState<"list" | "profiles" | "worries" | "choices">("list");
   const me = useMe();
   const safeguarding = !!me && rightsIn(me, branch.school_id).has("private.safeguarding");
   const [waiting, setWaiting] = useState(0);
@@ -79,8 +80,10 @@ export function StudentsTab({
       <div className="segmented stu-views" role="tablist">
         <button className={view === "list" ? "on" : ""} onClick={() => setView("list")}><Icon name="students" size={15} />Students</button>
         <button className={view === "profiles" ? "on" : ""} onClick={() => setView("profiles")}><Icon name="clipboard-list" size={15} />Complete profiles{waiting ? <span className="count-badge">{waiting}</span> : null}</button>
+        <button className={view === "choices" ? "on" : ""} onClick={() => setView("choices")}><Icon name="book-text" size={15} />Subject choices</button>
         {safeguarding && <button className={view === "worries" ? "on" : ""} onClick={() => setView("worries")}><Icon name="shield" size={15} />Worries</button>}
       </div>
+      {view === "choices" && <SubjectChoicesPanel schoolId={branch.school_id} />}
       {view === "worries" && <WorriesPanel schoolId={branch.school_id} />}
       {view === "profiles" && <ProfilesPanel schoolId={branch.school_id} onCount={setWaiting} />}
       {view === "list" && <>

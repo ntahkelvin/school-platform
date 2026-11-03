@@ -21,7 +21,7 @@ export interface Extras {
   reading: { target: number; this_term: number; total: number; to_rate: { loan_id: string; title: string; author: string | null }[];
     books: { id: string; title: string; author: string | null; rating: number | null; review: string | null; finished_on: string; library: boolean }[] };
   goals: Goal[]; goal_areas: Record<string, string>; worries: Worry[]; worry_kinds: Record<string, string>;
-  notices: { id: string; text: string; icon: string; at: string; link: string | null }[]; greeting: string;
+  notices: { id: string; text: string; icon: string; at: string; link: string | null }[]; greeting: string; choices_waiting?: string[];
 }
 interface LibBook { id: string; title: string; author: string | null; category: string; subject: string | null; level: string | null; shelf: string | null; summary: string | null;
   colour: string | null; available: number; copies: number; held: boolean; popular: number; for_me: boolean }
@@ -68,6 +68,13 @@ export function DayExtras({ x, go }: { x: Extras; go: (t: string) => void }) {
           <div><strong>{x.greeting}</strong>
             <span className="small">{close ? `${close.name}: ${close.value} of ${close.next} ${close.what}. Keep going!` : "You've earned every badge. Amazing!"}</span></div>
         </section>
+      )}
+      {(x.choices_waiting ?? []).length > 0 && (
+        <button className="sp-choose-banner" style={hue("fuchsia")} onClick={() => go("record")}>
+          <Glyph icon="book-text" hue="fuchsia" size={40} />
+          <span className="grow"><b>{self ? "Time to choose your subjects!" : "Subject choices are open"}</b><small className="block">{x.choices_waiting!.join(" · ")}</small></span>
+          <Icon name="arrow-right" size={18} />
+        </button>
       )}
       {self && x.notices.length > 0 && (
         <section className="card g-card" style={hue("amber")}>

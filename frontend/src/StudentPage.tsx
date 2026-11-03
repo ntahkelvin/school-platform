@@ -1,4 +1,5 @@
 // Student 360: one page with everything the school knows about a student, from every part of the platform.
+import RecordPage from "./Records";
 import { Fragment, useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   api, errorText, getToken,
@@ -81,7 +82,7 @@ const loadMeta = () => (metaP ??= sapi.meta().catch((e) => { metaP = null; throw
 const day = (d: string) => new Date(d.length === 10 ? `${d}T12:00:00` : d);
 const nice = (d: string | null, o: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" }) => (d ? day(d).toLocaleDateString("en-GB", o) : "–");
 
-type Tab = "overview" | "about" | "school" | "attendance" | "health" | "conduct" | "library" | "timeline" | "documents";
+type Tab = "overview" | "record" | "about" | "school" | "attendance" | "health" | "conduct" | "library" | "timeline" | "documents";
 
 export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLogout: () => void; studentId: string }) {
   const [p, setP] = useState<Profile | null>(null);
@@ -114,7 +115,7 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
   const a = p.access;
   const crumbs = [{ label: "Home", href: "#/" }, ...(a.full ? [{ label: s.school_name, href: href({ page: "school", id: s.school_id, tab: "students" }) }] : []), { label: s.full_name }];
   const colour = p.placement.house?.colour || s.school_colour || "#1e63d6";
-  const tabs: [Tab, string, string][] = [["overview", "Overview", "sparkle"], ["about", "About and family", "users"], ["school", "School life", "classes"],
+  const tabs: [Tab, string, string][] = [["overview", "Overview", "sparkle"], ["record", "Academic record", "graduation-cap"], ["about", "About and family", "users"], ["school", "School life", "classes"],
     ["attendance", "Attendance", "attendance"], ["health", "Health", "heart-pulse"], ["conduct", "Conduct and awards", "star"], ["library", "Library", "book"],
     ["timeline", "Timeline", "history"], ...(a.full ? [["documents", "Documents", "file"] as [Tab, string, string]] : [])];
   return (
@@ -173,6 +174,7 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
           </section>
         )}
         {tab === "overview" && <Overview p={p} go={setTab} />}
+        {tab === "record" && <RecordPage studentId={s.id} who="staff" />}
         {tab === "about" && <About p={p} onChange={setP} onEdit={() => setModal("personal")} onAddGuardian={() => setModal("guardian")} reload={load} />}
         {tab === "school" && <SchoolLife p={p} onChange={setP} />}
         {tab === "attendance" && <Attendance p={p} />}

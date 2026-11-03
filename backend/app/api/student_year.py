@@ -275,6 +275,11 @@ def run(school_id: uuid.UUID, data: RunIn, user: User = Depends(current_user), d
     hold = set(data.hold_back)
     snapshot, promoted, graduated, held = [], 0, 0, 0
     today = now_wat().date()
+    from app.api import records
+    rid = uuid.uuid4()
+    r = PromotionRun(id=rid, school_id=school_id, label=data.label, by_id=user.id, snapshot=[], summary={})
+    db.add(r)
+    db.flush()
     # Work out every move from where students are now, then apply, so classes moving into each other don't mix.
     for s in studs:
         snapshot.append({"student_id": str(s.id), "class_id": str(s.class_id), "status": s.status.value, "left_on": s.left_on.isoformat() if s.left_on else None})
@@ -284,7 +289,14 @@ def run(school_id: uuid.UUID, data: RunIn, user: User = Depends(current_user), d
             if s.id in hold:
                 held += 1
                 db.add(StudentEvent(student_id=s.id, kind="class", text=f"Repeating {old} ({data.label})", by_id=user.id))
+                e = records.ensure_current(db, s)
+                label = records.next_label(e.session_label)
+                records.close_year(db, s, "repeated", rid)
+                records.open_year(db, s, label, rid)
             continue
+        e = records.ensure_current(db, s)
+        label = records.next_label(e.session_label)
+        records.close_year(db, s, "graduated" if to == "graduate" else "promoted", rid)
         if to == "graduate":
             s.status, s.left_on, s.leave_reason = StudentStatus.graduated, today, s.leave_reason or "Finished school"
             student_login_active(db, s, False)
@@ -292,13 +304,13 @@ def run(school_id: uuid.UUID, data: RunIn, user: User = Depends(current_user), d
             db.add(StudentEvent(student_id=s.id, kind="status", text=f"Graduated from {old} ({data.label})", by_id=user.id))
         else:
             s.class_id = to
+            records.open_year(db, s, label, rid)
+            records.apply_choices(db, s)
             promoted += 1
             db.add(StudentEvent(student_id=s.id, kind="class", text=f"Promoted from {old} to {classes[to].name} ({data.label})", by_id=user.id))
     if not snapshot:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "There are no students in those classes to move")
-    r = PromotionRun(school_id=school_id, label=data.label, by_id=user.id, snapshot=snapshot,
-                     summary={"promoted": promoted, "graduated": graduated, "held": held})
-    db.add(r)
+    r.snapshot, r.summary = snapshot, {"promoted": promoted, "graduated": graduated, "held": held}
     db.commit()
     return {"id": str(r.id), **r.summary}
 
@@ -327,6 +339,8 @@ def undo(run_id: uuid.UUID, user: User = Depends(current_user), db: Session = De
         student_login_active(db, s, s.status == StudentStatus.active)
         db.add(StudentEvent(student_id=s.id, kind="class", text=f"Promotion “{r.label}” undone", by_id=user.id))
         n += 1
+    from app.api import records
+    records.undo_years(db, r.id)
     r.undone = True
     db.commit()
     return {"restored": n}
@@ -356,6 +370,9 @@ def leave(student_id: uuid.UUID, data: LeaveIn, user: User = Depends(current_use
         student_login_active(db, s, True)
         db.add(StudentEvent(student_id=s.id, kind="status", text="Back on the roll", by_id=user.id))
     else:
+        from app.api import records
+        if s.status == StudentStatus.active:
+            records.close_year(db, s, "graduated" if new == StudentStatus.graduated else "left")
         s.status, s.left_on = new, data.left_on or now_wat().date()
         s.leave_reason, s.next_school = data.reason, data.next_school
         student_login_active(db, s, False)

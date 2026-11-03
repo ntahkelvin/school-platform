@@ -123,6 +123,7 @@ def extras(student_id: uuid.UUID | None = None, user: User = Depends(current_use
         "worry_kinds": WORRY_KINDS,
         "notices": [{"id": str(n.id), "text": n.text, "icon": n.icon, "at": n.created_at.isoformat(), "link": n.link} for n in unread],
         "greeting": greeting(s, today),
+        "choices_waiting": [w["title"] for w in __import__("app.api.records", fromlist=["my_choices"]).my_choices(db, s, user) if w["is_open"] and not w["mine"]],
     }
 
 
