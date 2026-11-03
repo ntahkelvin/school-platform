@@ -20,6 +20,7 @@ import { MeContext, opensSchool, stopSeeAs } from "./rightsApi";
 import { ChildPage, FamilyHomePage } from "./Family";
 import { ApplyPage } from "./Apply";
 import ClassPage from "./ClassPage";
+import { MarksPage, ResultsPage, SheetPage, VerifyPage } from "./Assessment";
 
 export default function App() {
   const [me, setMe] = useState<Me | null>(null);
@@ -53,6 +54,8 @@ export default function App() {
   if (route.page === "kiosk") return <KioskPage schoolId={route.school} token={route.token} />;
   // The admissions form is public: families apply without a login.
   if (route.page === "apply") return <ApplyPage code={route.code} />;
+  // Anyone can check a printed report card is genuine (the QR code on the card).
+  if (route.page === "verify") return <VerifyPage code={route.code} />;
   if (checking) return <div className="center muted">Loading…</div>;
   if (!me) return <Login onLoggedIn={setMe} />;
 
@@ -79,6 +82,9 @@ export default function App() {
     // Any member of staff can open a student's profile; the server shows only what their link to the student allows.
     if (route.page === "student") return <StudentPage key={route.id} {...common} studentId={route.id} />;
     if (route.page === "class") return <ClassPage key={route.id} {...common} classId={route.id} />;
+    if (route.page === "marks") return <MarksPage key={route.tab} {...common} tab={route.tab} />;
+    if (route.page === "sheet") return <SheetPage key={route.scope} {...common} scope={route.scope} />;
+    if (route.page === "results") return <ResultsPage key={route.id} {...common} classId={route.id} />;
     if (route.page === "board" && isBoard) return <BoardView {...common} />;
     if (route.page === "staff-record") return <StaffRecordPage key={route.id} {...common} schoolId={route.school} userId={route.id} />;
     if (route.page === "staff-cards") return <IdCardsPage key={`${route.school}${route.id}`} {...common} schoolId={route.school} userId={route.id} />;
@@ -102,6 +108,12 @@ export default function App() {
       return <StudentPage key={route.id} {...common} studentId={route.id} />;
     case "class":
       return <ClassPage key={route.id} {...common} classId={route.id} />;
+    case "marks":
+      return <MarksPage key={route.tab} {...common} tab={route.tab} />;
+    case "sheet":
+      return <SheetPage key={route.scope} {...common} scope={route.scope} />;
+    case "results":
+      return <ResultsPage key={route.id} {...common} classId={route.id} />;
     case "staff":
       return <StaffHome {...common} />;
     case "staff-record":

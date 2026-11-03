@@ -16,7 +16,7 @@ import { Avatar, Glyph, hue, Stat } from "./ui";
 interface Row extends ListRow { today: string | null }
 interface ClassData {
   class: { id: string; name: string; level: string; branch_id: string }; school: { id: string; name: string; colour: string | null };
-  form_teacher: { id: string; name: string } | null; why: string; full: boolean; can_mark: boolean; students: Row[]; boys: number; girls: number; boarders: number;
+  form_teacher: { id: string; name: string } | null; why: string; full: boolean; can_mark: boolean; can_results: boolean; students: Row[]; boys: number; girls: number; boarders: number;
   today: { taken: boolean; present: number; absent: number; late: number; unmarked: number; date: string }; attendance: number | null; points: number;
   subjects: { subject: string; teacher: string | null; teacher_id: string | null; elective: boolean }[]; timetable: Grid | null; insights: Insight[];
 }
@@ -44,6 +44,7 @@ export default function ClassPage({ me, onLogout, classId }: { me: Me; onLogout:
         </div>
         <div className="class-hero-actions">
           {d.can_mark && <a className="button on-band with-icon" href={href({ page: "register", kind: "school", id: d.class.id, date: todayLocal() })}><Icon name="attendance" size={15} />{d.today.taken ? "Register" : "Take register"}</a>}
+          {d.can_results && <a className="button on-band with-icon" href={href({ page: "results", id: d.class.id })}><Icon name="chart" size={15} />Results</a>}
           <button className="on-band with-icon" onClick={() => setPrint("list")}><Icon name="printer" size={15} />Class list</button>
           {d.full && <button className="on-band with-icon" onClick={() => setPrint("cards")}><Icon name="id-card" size={15} />ID cards</button>}
           {d.full && <button className="on-band with-icon" onClick={() => setPrint("photos")}><Icon name="camera" size={15} />Photo day</button>}

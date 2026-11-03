@@ -137,7 +137,7 @@ systemctl restart caddy
 say "8/9 Nightly backups (kept for 14 days in /var/backups/school-platform)"
 install -m 755 "$APP/server/backup.sh" /usr/local/bin/school-backup
 echo "30 2 * * * root /usr/local/bin/school-backup >/dev/null 2>&1" > /etc/cron.d/school-backup
-for s in update status backup; do ln -sf "$APP/server/$s.sh" /usr/local/bin/school-$s; done
+for s in update status backup demo; do ln -sf "$APP/server/$s.sh" /usr/local/bin/school-$s; done
 chmod +x "$APP"/server/*.sh
 
 say "9/9 Free https link with Tailscale Funnel"

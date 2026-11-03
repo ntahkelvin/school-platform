@@ -1,5 +1,6 @@
 // The family portal: parents see their own children, students see themselves. Phone first: most parents will use a phone.
 import RecordPage from "./Records";
+import { HomeworkPage, ResultsList } from "./Assessment";
 import { useEffect, useMemo, useState } from "react";
 import { api, errorText, type Me } from "./api";
 import { InsightList, useBusy } from "./GrowthBits";
@@ -274,7 +275,7 @@ function Exeat({ c, me, onClose, onDone }: { c: ChildView; me: Me; onClose: () =
 
 // ---------- One child ----------
 
-type Tab = "overview" | "timetable" | "attendance" | "conduct" | "library" | "health" | "school" | "details" | "clubs" | "goals" | "badges" | "calendar" | "worry" | "record";
+type Tab = "overview" | "timetable" | "attendance" | "conduct" | "library" | "health" | "school" | "details" | "clubs" | "goals" | "badges" | "calendar" | "worry" | "record" | "homework" | "results";
 
 export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; onLogout: () => void; studentId: string; home?: boolean }) {
   const [c, setC] = useState<ChildView | null>(null);
@@ -296,7 +297,7 @@ export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; o
   const s = c.student, self = c.how === "self";
   const colour = c.placement.house?.colour || c.school.colour || "#1e63d6";
   const T = (k: Tab, l: string, i: string): [Tab, string, string] => [k, l, i];
-  const tabs: [Tab, string, string][] = [T("overview", self ? "My day" : "Overview", "sparkle"), T("record", self ? "My record" : "School record", "graduation-cap"), ...(c.timetable ? [T("timetable", "Timetable", "calendar-days")] : []),
+  const tabs: [Tab, string, string][] = [T("overview", self ? "My day" : "Overview", "sparkle"), T("homework", "Homework", "notebook"), T("results", "Results", "chart"), T("record", self ? "My record" : "School record", "graduation-cap"), ...(c.timetable ? [T("timetable", "Timetable", "calendar-days")] : []),
     T("library", "Library", "book"), T("goals", self ? "My goals" : "Goals", "target"), T("badges", "Badges", "trophy"), T("clubs", "Clubs", "club"),
     T("calendar", "Calendar", "calendar"), T("attendance", "Attendance", "attendance"), ...(c.conduct ? [T("conduct", "Merits and awards", "star")] : []),
     T("health", "Health", "heart-pulse"), T("school", self ? "My school" : "Teachers and school", "classes"),
@@ -335,6 +336,8 @@ export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; o
       <div className="stu-main">
         {tab === "overview" && x && <DayExtras x={x} go={(t) => setTab(t as Tab)} />}
         {tab === "overview" && <Overview c={c} go={setTab} />}
+        {tab === "homework" && <HomeworkPage studentId={s.id} self={self} />}
+        {tab === "results" && <ResultsList studentId={s.id} self={self} />}
         {tab === "record" && <RecordPage studentId={s.id} who={self ? "self" : "parent"} />}
         {tab === "goals" && x && <GoalsPage x={x} reload={() => void loadX()} />}
         {tab === "badges" && x && <BadgesPage x={x} />}

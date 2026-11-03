@@ -5,6 +5,7 @@ import { api, errorText } from "./api";
 import { useBusy } from "./GrowthBits";
 import Icon from "./Icon";
 import { subjectLook } from "./look";
+import { gradeHue } from "./Assessment";
 import { Avatar, Field, Glyph, hue, Modal } from "./ui";
 
 interface TermSum { days: number; attendance: number | null; absent: number; points: number; books: number; borrowed: number; awards: string[] }
@@ -18,8 +19,9 @@ export interface Rec {
   now: { term: string; session: string; week: number; weeks: number; days_left: number; ends_on: string; progress: number } | null;
   class: { id: string; name: string; level: string; form_teacher: string | null } | null; house: { name: string; colour: string | null } | null;
   subjects: { name: string; teacher: string | null; elective: boolean; per_week: number | null }[]; clubs: { name: string; role: string | null }[];
-  terms: { name: string; number: number; starts_on: string | null; ends_on: string | null; state: "now" | "done" | "coming"; summary?: TermSum }[];
-  years: Year[]; results: null; can_edit: boolean; choices?: ChoiceWindow[];
+  terms: { name: string; number: number; starts_on: string | null; ends_on: string | null; state: "now" | "done" | "coming"; summary?: TermSum;
+    result?: { average: number | null; position: string | null; out_of: number; grade: string | null } | null }[];
+  years: Year[]; results: unknown[]; can_edit: boolean; choices?: ChoiceWindow[];
 }
 export const rapi = {
   family: (sid: string) => api.raw<Rec>("GET", `/api/me/children/${sid}/record`),
@@ -99,7 +101,8 @@ export default function RecordPage({ studentId, who }: { studentId: string; who:
                 </ul>
               ) : <p className="small muted">Starts {t.starts_on ? nice(t.starts_on) : "later"}.</p>}
               {t.summary?.awards.length ? <p className="small">🏅 {t.summary.awards.join(", ")}</p> : null}
-              {t.state !== "coming" && <p className="rec-results-soon"><Icon name="chart" size={14} />{t.state === "done" ? "Scores and report card will show here" : "Test and exam scores will show here"}</p>}
+              {t.result ? <p className="rec-result" style={hue(gradeHue(t.result.grade))}><Icon name="award" size={15} /><b>{t.result.average}%</b> average{t.result.position ? <> · <b>{t.result.position}</b> of {t.result.out_of}</> : null}{t.result.grade ? ` · ${t.result.grade}` : ""}</p>
+                : t.state !== "coming" && <p className="rec-results-soon"><Icon name="chart" size={14} />{t.state === "done" ? "Report card not published yet" : "The report card shows here at the end of term"}</p>}
             </div>
           ))}
         </div>

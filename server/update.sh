@@ -39,7 +39,7 @@ for try in 1 2 3; do npm ci --no-audit --no-fund --loglevel=error && break
   echo "Internet hiccup, trying again ($try of 3)..."; sleep 10; done
 npm run build > /tmp/school-build.log 2>&1 || { tail -30 /tmp/school-build.log; echo; echo "The screens did not build. Send a screenshot of the lines above."; exit 1; }'
 
-for s in update status backup; do ln -sf "$APP/server/$s.sh" /usr/local/bin/school-$s; done
+for s in update status backup demo; do ln -sf "$APP/server/$s.sh" /usr/local/bin/school-$s; done
 install -m 755 "$APP/server/backup.sh" /usr/local/bin/school-backup
 chmod +x "$APP"/server/*.sh
 systemctl restart school-api

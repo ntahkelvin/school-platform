@@ -23,6 +23,7 @@ AREAS: dict[str, dict] = {
     "attendance": {"label": "Attendance", "icon": "attendance", "hint": "Every class register and night roll"},
     "classes": {"label": "Classes", "icon": "classes", "hint": "Classes, sessions and terms"},
     "teaching": {"label": "Teaching", "icon": "presentation", "hint": "Subjects, form teachers, who teaches what"},
+    "results": {"label": "Scores and results", "icon": "chart", "hint": "Every score sheet, broadsheets, report cards and publishing results"},
     "staff": {"label": "Staff", "icon": "staff", "hint": "Staff list, jobs and staff records"},
     "staff_day": {"label": "Staff day", "icon": "staff-day", "hint": "Staff sign-in, leave, duties, lesson notes"},
     "growth": {"label": "Growth", "icon": "growth", "hint": "Observations, appraisals, training, wellbeing"},
@@ -77,7 +78,7 @@ DEFAULTS: dict[str, set[str]] = {
     "head_of_school": set(ALL),
     "head": (ALL - {"rights.change"}),
     "vice_principal": _see(*[a for a in AREA_KEYS if a not in ("imports", "logins", "rights")])
-        | _both("students", "attendance", "classes", "teaching", "staff_day", "growth", "operations", "library")
+        | _both("students", "attendance", "classes", "teaching", "results", "staff_day", "growth", "operations", "library")
         | {"private.safeguarding"},
     "it_admin": _see(*[a for a in AREA_KEYS if a != "imports"])
         | _both("school", "students", "classes", "teaching", "staff", "staff_day", "operations", "facilities", "setup", "imports", "logins", "library")
@@ -126,6 +127,7 @@ ROUTE_AREAS: list[tuple[str, str, str]] = [
     ("student_portal", r"", "students"),
     ("records", r"", "students"),
     ("teaching", r"", "teaching"),
+    ("assessment", r"", "results"),
     ("units", r"", "setup"),
     ("boards", r"", "school"),
     ("rights", r"", "rights"),

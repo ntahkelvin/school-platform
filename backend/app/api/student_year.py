@@ -168,6 +168,7 @@ def class_page(class_id: uuid.UUID, user: User = Depends(current_user), db: Sess
             "school": {"id": str(school.id), "name": school.name, "colour": school.colour},
             "form_teacher": {"id": str(ft.id), "name": ft.full_name} if ft else None, "why": why, "full": full,
             "can_mark": full and rights.has(user, school, "attendance.change", db) or c.form_teacher_id == user.id,
+            "can_results": rights.has(user, school, "results.see", db) or c.form_teacher_id == user.id,
             "students": rows, "boys": sum(1 for r in rows if r["gender"] == "male"), "girls": sum(1 for r in rows if r["gender"] == "female"),
             "boarders": sum(1 for r in rows if r["boarding_status"] == "boarder"),
             "today": {"taken": bool(marks), "present": counts.get("present", 0) + counts.get("late", 0), "absent": counts.get("absent", 0),

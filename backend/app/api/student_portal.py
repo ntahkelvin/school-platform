@@ -123,6 +123,9 @@ def extras(student_id: uuid.UUID | None = None, user: User = Depends(current_use
         "worry_kinds": WORRY_KINDS,
         "notices": [{"id": str(n.id), "text": n.text, "icon": n.icon, "at": n.created_at.isoformat(), "link": n.link} for n in unread],
         "greeting": greeting(s, today),
+        "homework": (lambda h: {"todo": h["counts"]["todo"], "late": h["counts"]["late"], "next": [{"title": i["title"], "subject": i["subject"], "due": i["due"], "state": i["state"]}
+                                                                                for i in h["items"] if i["state"] in ("late", "todo")][:3]} if h["items"] else None)(
+            __import__("app.api.assessment", fromlist=["homework_for"]).homework_for(db, s, False)),
         "choices_waiting": [w["title"] for w in __import__("app.api.records", fromlist=["my_choices"]).my_choices(db, s, user) if w["is_open"] and not w["mine"]],
     }
 

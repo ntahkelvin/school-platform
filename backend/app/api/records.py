@@ -180,6 +180,12 @@ def record(db: Session, s: Student, full: bool) -> dict:
         week = min(weeks, max(1, (today - t.starts_on).days // 7 + 1))
         now = {"term": t.name, "session": t.session.name, "week": week, "weeks": weeks, "days_left": max(0, (t.ends_on - today).days),
                "ends_on": t.ends_on.isoformat(), "progress": round(100 * max(0, (today - t.starts_on).days) / max(1, (t.ends_on - t.starts_on).days))}
+    from app.api.assessment import published_cards
+    cards = published_cards(db, s)
+    by_term = {c["term_id"]: c for c in cards}
+    if t and t.session:
+        for item, x in zip(terms, sorted(t.session.terms, key=lambda z: z.number)):
+            item["result"] = by_term.get(str(x.id))
     years = list(db.scalars(select(Enrolment).where(Enrolment.student_id == s.id).order_by(Enrolment.outcome == "current", Enrolment.ended_on.nulls_last(),
                                                                                           Enrolment.started_on.nulls_first(), Enrolment.created_at)))
     db.commit()
@@ -193,7 +199,7 @@ def record(db: Session, s: Student, full: bool) -> dict:
         "years": [{"id": str(e.id), "session": e.session_label, "class_name": e.class_name, "level": e.level, "school_name": e.school_name, "form_teacher": e.form_teacher,
                    "started_on": e.started_on.isoformat() if e.started_on else None, "ended_on": e.ended_on.isoformat() if e.ended_on else None,
                    "outcome": e.outcome, "outcome_label": OUTCOMES.get(e.outcome, e.outcome), "subjects": e.subjects or [], "note": e.note} for e in years],
-        "results": None,          # scores and report cards come in the next stage
+        "results": cards,
         "can_edit": full,
     }
 

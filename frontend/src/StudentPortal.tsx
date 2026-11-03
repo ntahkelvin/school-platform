@@ -22,6 +22,7 @@ export interface Extras {
     books: { id: string; title: string; author: string | null; rating: number | null; review: string | null; finished_on: string; library: boolean }[] };
   goals: Goal[]; goal_areas: Record<string, string>; worries: Worry[]; worry_kinds: Record<string, string>;
   notices: { id: string; text: string; icon: string; at: string; link: string | null }[]; greeting: string; choices_waiting?: string[];
+  homework?: { todo: number; late: number; next: { title: string; subject: string; due: string; state: string }[] } | null;
 }
 interface LibBook { id: string; title: string; author: string | null; category: string; subject: string | null; level: string | null; shelf: string | null; summary: string | null;
   colour: string | null; available: number; copies: number; held: boolean; popular: number; for_me: boolean }
@@ -68,6 +69,13 @@ export function DayExtras({ x, go }: { x: Extras; go: (t: string) => void }) {
           <div><strong>{x.greeting}</strong>
             <span className="small">{close ? `${close.name}: ${close.value} of ${close.next} ${close.what}. Keep going!` : "You've earned every badge. Amazing!"}</span></div>
         </section>
+      )}
+      {x.homework && x.homework.next.length > 0 && (
+        <button className="sp-hw-strip" onClick={() => go("homework")}>
+          <span className="sp-hw-count" style={hue(x.homework.late ? "red" : "amber")}><b>{x.homework.todo + x.homework.late}</b><small>homework</small></span>
+          <ul>{x.homework.next.map((h) => <li key={h.title} className={h.state}><b>{h.subject}</b> {h.title}<small className={h.state === "late" ? "late" : ""}>{h.due}</small></li>)}</ul>
+          <Icon name="arrow-right" size={18} />
+        </button>
       )}
       {(x.choices_waiting ?? []).length > 0 && (
         <button className="sp-choose-banner" style={hue("fuchsia")} onClick={() => go("record")}>

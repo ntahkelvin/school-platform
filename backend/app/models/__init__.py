@@ -26,7 +26,10 @@ from app.models.staffday import DutyAssignment, LeaveRequest, LessonNote, StaffA
 from app.models.tenancy import Branch, School, SchoolGroup, SchoolType
 from app.models.users import Membership, Role, User
 
+from app.models.assessment import Assignment, ReportCard, Score, SheetStatus, Submission
+
 __all__ = [
+    "Assignment", "ReportCard", "Score", "SheetStatus", "Submission",
     "Board", "BoardMember",
     "AssessmentComponent", "AssessmentScheme", "Bed", "Club", "ClubKind", "Department", "DepartmentKind",
     "EventCategory", "Facility", "FacilityKind", "GradeBand", "GradingScale", "Hostel", "HostelGender", "HostelRoom",
