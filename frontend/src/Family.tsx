@@ -10,6 +10,8 @@ import { Avatar, Field, Glyph, hue, Modal, nicePhone } from "./ui";
 import { WeekGrid, type Grid, type Today as TodayLessons } from "./Timetable";
 import { subjectLook } from "./look";
 import FamilyDetails from "./FamilyDetails";
+import { BadgesPage, CalendarPage, ClubsPage, DayExtras, GoalsPage, LibraryPage, MyCard, spapi, WorryPage, type Extras } from "./StudentPortal";
+import { ChangePassword } from "./StaffHome";
 
 // ---------- API ----------
 
@@ -75,6 +77,7 @@ export function FamilyHomePage({ me, onLogout }: { me: Me; onLogout: () => void 
   const [d, setD] = useState<FamilyHome | null>(null);
   const [error, setError] = useState("");
   const [tell, setTell] = useState<ChildCard | null>(null);
+  const [pw, setPw] = useState(false);
   const load = () => fam.home().then(setD).catch((e) => setError(errorText(e)));
   useEffect(() => { void load(); }, []);
   if (error) return <Layout me={me} onLogout={onLogout} crumbs={[{ label: "Home" }]}><p className="error">{error}</p></Layout>;
@@ -137,6 +140,8 @@ export function FamilyHomePage({ me, onLogout }: { me: Me; onLogout: () => void 
       )}
 
       {d.schools.map((s) => <SchoolContact key={s.id} s={s} />)}
+      <div className="row fam-foot"><span className="grow" /><button className="with-icon" onClick={() => setPw(true)}><Icon name="key" size={15} />Change my password</button></div>
+      {pw && <ChangePassword onClose={() => setPw(false)} />}
       {tell && <TellSchool childId={tell.id} name={tell.first_name} kinds={d.note_kinds} onClose={() => setTell(null)} onDone={() => { setTell(null); void load(); }} />}
     </Layout>
   );
@@ -268,14 +273,16 @@ function Exeat({ c, me, onClose, onDone }: { c: ChildView; me: Me; onClose: () =
 
 // ---------- One child ----------
 
-type Tab = "overview" | "timetable" | "attendance" | "conduct" | "library" | "health" | "school" | "details";
+type Tab = "overview" | "timetable" | "attendance" | "conduct" | "library" | "health" | "school" | "details" | "clubs" | "goals" | "badges" | "calendar" | "worry";
 
 export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; onLogout: () => void; studentId: string; home?: boolean }) {
   const [c, setC] = useState<ChildView | null>(null);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
-  const [modal, setModal] = useState<null | "tell" | "exeat">(null);
-  const load = () => fam.child(studentId).then(setC).catch((e) => setError(errorText(e)));
+  const [modal, setModal] = useState<null | "tell" | "exeat" | "card" | "password">(null);
+  const [x, setX] = useState<Extras | null>(null);
+  const loadX = () => spapi.extras(studentId).then(setX).catch(() => {});
+  const load = () => { void loadX(); return fam.child(studentId).then(setC).catch((e) => setError(errorText(e))); };
   useEffect(() => {
     void load();
     let t: Tab = "overview";
@@ -287,10 +294,12 @@ export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; o
   if (!c) return <Layout me={me} onLogout={onLogout} crumbs={crumbs}><div className="skeleton" aria-hidden="true"><span /><span /><span /></div></Layout>;
   const s = c.student, self = c.how === "self";
   const colour = c.placement.house?.colour || c.school.colour || "#1e63d6";
-  const tabs: [Tab, string, string][] = [["overview", self ? "My day" : "Overview", "sparkle"], ...(c.timetable ? [["timetable", "Timetable", "calendar-days"] as [Tab, string, string]] : []), ["attendance", "Attendance", "attendance"],
-    ...(c.conduct ? [["conduct", "Merits and awards", "star"] as [Tab, string, string]] : []), ["library", "Library", "book"],
-    ["health", "Health", "heart-pulse"], ["school", self ? "My school" : "Teachers and school", "classes"],
-    ...(!self ? [["details", "Details", "clipboard-list"] as [Tab, string, string]] : [])];
+  const T = (k: Tab, l: string, i: string): [Tab, string, string] => [k, l, i];
+  const tabs: [Tab, string, string][] = [T("overview", self ? "My day" : "Overview", "sparkle"), ...(c.timetable ? [T("timetable", "Timetable", "calendar-days")] : []),
+    T("library", "Library", "book"), T("goals", self ? "My goals" : "Goals", "target"), T("badges", "Badges", "trophy"), T("clubs", "Clubs", "club"),
+    T("calendar", "Calendar", "calendar"), T("attendance", "Attendance", "attendance"), ...(c.conduct ? [T("conduct", "Merits and awards", "star")] : []),
+    T("health", "Health", "heart-pulse"), T("school", self ? "My school" : "Teachers and school", "classes"),
+    ...(!self ? [T("details", "Details", "clipboard-list")] : [T("worry", "Report a worry", "shield")])];
   return (
     <Layout me={me} onLogout={onLogout} crumbs={crumbs}>
       <header className="stu-hero fam-child-hero" style={{ ["--house" as string]: colour }}>
@@ -298,6 +307,8 @@ export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; o
           <div className="hero-actions">
             {!self && <button className="on-band" onClick={() => setModal("tell")}><Icon name="message" size={14} />Tell the school</button>}
             {!self && s.boarder && !c.open_pass && <button className="on-band" onClick={() => setModal("exeat")}><Icon name="home" size={14} />Ask to bring home</button>}
+            {self && x && <button className="on-band" onClick={() => setModal("card")}><Icon name="id-card" size={14} />My ID card</button>}
+            {self && <button className="on-band" onClick={() => setModal("password")}><Icon name="key" size={14} />Password</button>}
           </div>
         </div>
         <div className="stu-body">
@@ -321,16 +332,24 @@ export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; o
       </nav>
 
       <div className="stu-main">
+        {tab === "overview" && x && <DayExtras x={x} go={(t) => setTab(t as Tab)} />}
         {tab === "overview" && <Overview c={c} go={setTab} />}
+        {tab === "goals" && x && <GoalsPage x={x} reload={() => void loadX()} />}
+        {tab === "badges" && x && <BadgesPage x={x} />}
+        {tab === "clubs" && <ClubsPage studentId={s.id} />}
+        {tab === "calendar" && x && <CalendarPage x={x} />}
+        {tab === "worry" && x && <WorryPage x={x} reload={() => void loadX()} />}
         {tab === "timetable" && c.timetable && <section className="card editor tt-card"><h3 className="with-glyph"><Glyph icon="calendar-days" hue="blue" size={30} />{self ? "My week" : `${s.first_name}'s week`}</h3><WeekGrid g={c.timetable} today={new Date().getDay() - 1} /></section>}
         {tab === "attendance" && <Attendance c={c} />}
         {tab === "conduct" && c.conduct && <Conduct c={c} />}
-        {tab === "library" && <Library c={c} />}
+        {tab === "library" && x && <LibraryPage studentId={self ? undefined : s.id} x={x} reload={() => void loadX()} />}
         {tab === "health" && <Health c={c} />}
         {tab === "school" && <SchoolTab c={c} />}
         {tab === "details" && <FamilyDetails childId={s.id} name={s.first_name} />}
       </div>
       {modal === "tell" && <TellSchool childId={s.id} name={s.first_name} kinds={c.note_kinds} onClose={() => setModal(null)} onDone={() => { setModal(null); void load(); }} />}
+      {modal === "card" && x && <MyCard x={x} onClose={() => setModal(null)} />}
+      {modal === "password" && <ChangePassword onClose={() => setModal(null)} />}
       {modal === "exeat" && <Exeat c={c} me={me} onClose={() => setModal(null)} onDone={() => { setModal(null); void load(); }} />}
     </Layout>
   );
@@ -436,23 +455,6 @@ function Conduct({ c }: { c: ChildView }) {
             <li key={i}><span className={`pts ${e.points > 0 ? "up" : "down"}`}>{e.points > 0 ? "+" : ""}{e.points}</span>
               <span><b>{e.label}</b>{e.note && <span className="muted"> · {e.note}</span>}<small className="muted block">{nice(e.at, { day: "numeric", month: "short" })}{e.by ? ` · ${e.by}` : ""}</small></span></li>))}</ul>
         )}
-      </section>
-    </section>
-  );
-}
-
-function Library({ c }: { c: ChildView }) {
-  return (
-    <section className="stack">
-      <section className="card g-card" style={hue("sky")}>
-        <h3 className="with-glyph"><Glyph icon="book" hue="sky" size={30} />Out now</h3>
-        {c.library.out.length === 0 ? <p className="muted">No library books out.</p> :
-          <ul className="mini-list">{c.library.out.map((b, i) => <li key={i}><Icon name="book" size={16} /><span><b>{b.title}</b><small className={`block ${b.late ? "danger-text" : "muted"}`}>{b.late ? `${b.late} days late. Please bring it back.` : `Due ${nice(b.due_on, { weekday: "short", day: "numeric", month: "short" })}`}</small></span></li>)}</ul>}
-      </section>
-      <section className="card g-card" style={hue("violet")}>
-        <h3 className="with-glyph"><Glyph icon="book-marked" hue="violet" size={30} />Books read recently</h3>
-        {c.library.read.length === 0 ? <p className="muted">None yet. The library is waiting!</p> :
-          <div className="fam-shelf">{c.library.read.map((b, i) => <span key={i} className="fam-book" style={hue((["violet", "sky", "teal", "orange", "rose", "indigo"] as const)[i % 6])}><b>{b.title}</b>{b.author && <small>{b.author}</small>}</span>)}</div>}
       </section>
     </section>
   );

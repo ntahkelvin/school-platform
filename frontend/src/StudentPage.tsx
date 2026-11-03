@@ -18,6 +18,7 @@ import { Avatar, Empty, Field, Glyph, hue, Modal, NewLoginNotice, Stat } from ".
 import { IdCards, LeaveForm, Letter, makeThumb } from "./StudentYear";
 import { NoteList, type FamilyNote } from "./Family";
 import { NotYours } from "./ClassPage";
+import { StudentGoalsCard } from "./StudentPortal";
 import { WeekGrid, type Grid } from "./Timetable";
 import { SeenForm } from "./FamilyAdmin";
 
@@ -491,6 +492,7 @@ function SchoolLife({ p, onChange }: { p: Profile; onChange: (x: Profile) => voi
         {pl.clubs.length === 0 ? <p className="muted small">Not in a club yet.</p> : <ul className="collect-list">{pl.clubs.map((c) => <li key={c.id}><Glyph icon="star" hue="green" size={30} soft /><span className="grow"><strong>{c.name}</strong><small>{c.role}{c.patron ? ` · patron ${c.patron}` : ""}</small></span></li>)}</ul>}
         {p.student.talents.length > 0 && <div className="chips">{p.student.talents.map((t) => <span key={t} className="hue-chip" style={hue("pink")}>{t}</span>)}</div>}
       </section>
+      <StudentGoalsCard studentId={p.student.id} name={p.student.first_name} canNote={p.access.edit || p.access.teacher} />
       {p.timetable && (
         <section className="card g-card wide tt-card" style={hue("blue")}>
           <h3 className="with-glyph"><Glyph icon="calendar-days" hue="blue" size={30} />{p.student.first_name}'s week</h3>

@@ -12,7 +12,8 @@ import StudentForm from "./StudentForm";
 import { Avatar, Empty, Field, Glyph, hue, IconButton, Modal, NewLoginNotice, nicePhone, Stat } from "./ui";
 import Icon from "./Icon";
 import { departmentLook, ROLE_HUE, STAGE_LOOK, stageOf } from "./look";
-import { useCanChange, useRoleTools } from "./rightsApi";
+import { rightsIn, useCanChange, useMe, useRoleTools } from "./rightsApi";
+import { WorriesPanel } from "./StudentPortal";
 import { StudentListView, yapi, type ListRow } from "./StudentYear";
 import { fam } from "./Family";
 import { FromHome } from "./FamilyAdmin";
@@ -34,7 +35,9 @@ export function StudentsTab({
   const [newLogin, setNewLogin] = useState<NewLogin | null>(null);
   const [error, setError] = useState("");
   const canChange = useCanChange();
-  const [view, setView] = useState<"list" | "profiles">("list");
+  const [view, setView] = useState<"list" | "profiles" | "worries">("list");
+  const me = useMe();
+  const safeguarding = !!me && rightsIn(me, branch.school_id).has("private.safeguarding");
   const [waiting, setWaiting] = useState(0);
   useEffect(() => { papi.overview(branch.school_id).then((x) => setWaiting(x.requests.length + x.documents.length)).catch(() => {}); }, [branch.school_id]);
   const [homeMsgs, setHomeMsgs] = useState<number | null>(null);
@@ -76,7 +79,9 @@ export function StudentsTab({
       <div className="segmented stu-views" role="tablist">
         <button className={view === "list" ? "on" : ""} onClick={() => setView("list")}><Icon name="students" size={15} />Students</button>
         <button className={view === "profiles" ? "on" : ""} onClick={() => setView("profiles")}><Icon name="clipboard-list" size={15} />Complete profiles{waiting ? <span className="count-badge">{waiting}</span> : null}</button>
+        {safeguarding && <button className={view === "worries" ? "on" : ""} onClick={() => setView("worries")}><Icon name="shield" size={15} />Worries</button>}
       </div>
+      {view === "worries" && <WorriesPanel schoolId={branch.school_id} />}
       {view === "profiles" && <ProfilesPanel schoolId={branch.school_id} onCount={setWaiting} />}
       {view === "list" && <>
       <div className="toolbar students-toolbar">

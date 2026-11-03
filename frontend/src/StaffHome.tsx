@@ -15,6 +15,7 @@ import { StudentLink } from "./StudentLink";
 import { LeaveWaitingCard, MyDayCard, MyDutiesCard, MyLeaveCard, MyNotesCard, ToReviewCard } from "./StaffDayMe";
 import { Avatar, Empty, Field, Glyph, hue, Modal, Stat } from "./ui";
 import { MyLessonsCard } from "./Timetable";
+import { ClubRequestsCard } from "./StudentPortal";
 
 interface Today { total: number; marked: number; present: number; absent: number }
 interface FormClass { id: string; name: string; students: number; boys: number; girls: number; today: Today }
@@ -139,7 +140,7 @@ function GroupModal({ group, onClose, onChanged }: { group: Group; onClose: () =
   );
 }
 
-function ChangePassword({ onClose }: { onClose: () => void }) {
+export function ChangePassword({ onClose }: { onClose: () => void }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [done, setDone] = useState(false);
@@ -212,6 +213,7 @@ function SchoolPortal({ s, me, reload }: { s: SchoolHome; me: Me; reload: () => 
 
       <MyDayCard schoolId={s.school_id} />
       {s.teaching && <MyLessonsCard schoolId={s.school_id} />}
+      <ClubRequestsCard schoolId={s.school_id} />
 
       <div className="portal-grid">
         <MyDeskCards schoolId={s.school_id} />
