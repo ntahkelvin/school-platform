@@ -280,7 +280,7 @@ def profile(student_id: uuid.UUID, user: User = Depends(current_user), db: Sessi
         "notes": [{"id": str(n.id), "text": n.text, "private": n.private, "by": name_of(db, n.by_id), "by_id": str(n.by_id) if n.by_id else None,
                    "at": n.created_at.isoformat()} for n in notes],
         "documents": [{"id": str(d.id), "kind": d.kind, "label": DOC_KINDS.get(d.kind, d.kind), "filename": d.filename, "size": d.size,
-                       "at": d.created_at.isoformat(), "by": name_of(db, d.uploaded_by_id)} for d in docs] if a.full else None,
+                       "at": d.created_at.isoformat(), "by": name_of(db, d.uploaded_by_id), "checked": d.checked} for d in docs] if a.full else None,
     }
     from app.api.family import note_out
     from app.models import FamilyNote

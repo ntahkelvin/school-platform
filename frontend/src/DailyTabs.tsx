@@ -16,6 +16,7 @@ import { useCanChange, useRoleTools } from "./rightsApi";
 import { StudentListView, yapi, type ListRow } from "./StudentYear";
 import { fam } from "./Family";
 import { FromHome } from "./FamilyAdmin";
+import ProfilesPanel, { papi } from "./Profiles";
 
 const stageHue = (level: string) => STAGE_LOOK[stageOf(level)].hue;
 
@@ -33,6 +34,9 @@ export function StudentsTab({
   const [newLogin, setNewLogin] = useState<NewLogin | null>(null);
   const [error, setError] = useState("");
   const canChange = useCanChange();
+  const [view, setView] = useState<"list" | "profiles">("list");
+  const [waiting, setWaiting] = useState(0);
+  useEffect(() => { papi.overview(branch.school_id).then((x) => setWaiting(x.requests.length + x.documents.length)).catch(() => {}); }, [branch.school_id]);
   const [homeMsgs, setHomeMsgs] = useState<number | null>(null);
   const [showHome, setShowHome] = useState(false);
   const loadHome = useCallback(() => { fam.schoolNotes(branch.school_id).then((l) => setHomeMsgs(l.filter((n) => !n.seen_at).length)).catch(() => setHomeMsgs(null)); }, [branch.school_id]);
@@ -69,6 +73,12 @@ export function StudentsTab({
           ? <Stat icon="bed" hue="indigo" value={t.boarders} label="boarders" note={`${t.students - t.boarders} day students`} />
           : <Stat icon="sun" hue="amber" value={t.students} label="day students" />}
       </div>
+      <div className="segmented stu-views" role="tablist">
+        <button className={view === "list" ? "on" : ""} onClick={() => setView("list")}><Icon name="students" size={15} />Students</button>
+        <button className={view === "profiles" ? "on" : ""} onClick={() => setView("profiles")}><Icon name="clipboard-list" size={15} />Complete profiles{waiting ? <span className="count-badge">{waiting}</span> : null}</button>
+      </div>
+      {view === "profiles" && <ProfilesPanel schoolId={branch.school_id} onCount={setWaiting} />}
+      {view === "list" && <>
       <div className="toolbar students-toolbar">
         <label className="search">
           <Icon name="search" size={17} />
@@ -108,6 +118,7 @@ export function StudentsTab({
                          onChanged={() => { load(); onClassesChanged(); loadTotals(); }} />
       )}
 
+      </>}
       {adding && (
         <Modal title="Add student" onClose={() => setAdding(false)}>
           <StudentForm

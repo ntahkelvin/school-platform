@@ -27,6 +27,7 @@ backend/alembic/versions/0020_promotion.py
 backend/alembic/versions/0021_family.py
 backend/alembic/versions/0022_admissions.py
 backend/alembic/versions/0023_timetable.py
+backend/alembic/versions/0024_profile_requests.py
 backend/app/__init__.py
 backend/app/api/__init__.py
 backend/app/api/academics.py
@@ -51,6 +52,7 @@ backend/app/api/ops.py
 backend/app/api/organisations.py
 backend/app/api/people.py
 backend/app/api/portal.py
+backend/app/api/profiles.py
 backend/app/api/rights.py
 backend/app/api/schools.py
 backend/app/api/staff.py
@@ -113,6 +115,7 @@ frontend/src/Electives.tsx
 frontend/src/FacilitiesTab.tsx
 frontend/src/Family.tsx
 frontend/src/FamilyAdmin.tsx
+frontend/src/FamilyDetails.tsx
 frontend/src/GateDesk.tsx
 frontend/src/GradingCards.tsx
 frontend/src/Growth.tsx
@@ -135,6 +138,7 @@ frontend/src/OpsMe.tsx
 frontend/src/OrgPage.tsx
 frontend/src/Passport.tsx
 frontend/src/ProfileCard.tsx
+frontend/src/Profiles.tsx
 frontend/src/RecordEditor.tsx
 frontend/src/RegisterPage.tsx
 frontend/src/Rights.tsx

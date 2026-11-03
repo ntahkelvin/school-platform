@@ -9,6 +9,7 @@ import { href } from "./router";
 import { Avatar, Field, Glyph, hue, Modal, nicePhone } from "./ui";
 import { WeekGrid, type Grid, type Today as TodayLessons } from "./Timetable";
 import { subjectLook } from "./look";
+import FamilyDetails from "./FamilyDetails";
 
 // ---------- API ----------
 
@@ -16,7 +17,7 @@ interface Today { key: string; text: string; hue: string }
 interface ChildCard {
   id: string; first_name: string; name: string; nickname: string | null; photo: string | null; gender: string; class_name: string | null; school_id: string;
   house: string | null; house_colour: string | null; boarder: boolean; is_me: boolean; status: string; today: Today; attendance: number | null;
-  points_30: number; late_books: number; latest_award: string | null; birthday_in: number | null;
+  points_30: number; late_books: number; latest_award: string | null; birthday_in: number | null; complete: number | null;
 }
 interface SchoolCard { id: string; name: string; logo: string | null; colour: string | null; motto: string | null; phone: string | null; email: string | null; address: string | null; welcome: string | null }
 export interface FamilyNote {
@@ -118,6 +119,11 @@ export function FamilyHomePage({ me, onLogout }: { me: Me; onLogout: () => void 
               <span style={hue(c.late_books ? "red" : "sky")}><b>{c.late_books}</b>late books</span>
             </div>
             {c.latest_award && <p className="fam-award"><Icon name="trophy" size={14} />{c.latest_award}</p>}
+            {!d.is_student && c.complete != null && c.complete < 100 && (
+              <a className="fam-complete" href={href({ page: "child", id: c.id })} onClick={() => { try { sessionStorage.setItem("sp_child_tab", "details"); } catch { /* fine */ } }}>
+                <span className="setup-ring" style={{ ...hue(c.complete >= 80 ? "green" : c.complete >= 50 ? "amber" : "red"), ["--pct" as string]: `${c.complete}%` }}><b>{c.complete}%</b></span>
+                <span><b>Help complete {c.first_name}'s school record</b><small>Add a photo, health details and documents</small></span><Icon name="chevron-right" size={16} /></a>
+            )}
             {!d.is_student && <button className="fam-tell with-icon" onClick={() => setTell(c)}><Icon name="message" size={15} />Tell the school</button>}
           </article>
         ))}
@@ -262,7 +268,7 @@ function Exeat({ c, me, onClose, onDone }: { c: ChildView; me: Me; onClose: () =
 
 // ---------- One child ----------
 
-type Tab = "overview" | "timetable" | "attendance" | "conduct" | "library" | "health" | "school";
+type Tab = "overview" | "timetable" | "attendance" | "conduct" | "library" | "health" | "school" | "details";
 
 export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; onLogout: () => void; studentId: string; home?: boolean }) {
   const [c, setC] = useState<ChildView | null>(null);
@@ -270,7 +276,12 @@ export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; o
   const [tab, setTab] = useState<Tab>("overview");
   const [modal, setModal] = useState<null | "tell" | "exeat">(null);
   const load = () => fam.child(studentId).then(setC).catch((e) => setError(errorText(e)));
-  useEffect(() => { void load(); setTab("overview"); }, [studentId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    void load();
+    let t: Tab = "overview";
+    try { if (sessionStorage.getItem("sp_child_tab") === "details") { t = "details"; sessionStorage.removeItem("sp_child_tab"); } } catch { /* fine */ }
+    setTab(t);
+  }, [studentId]); // eslint-disable-line react-hooks/exhaustive-deps
   const crumbs = home ? [{ label: "Home" }] : [{ label: "Home", href: "#/" }, { label: c?.student.first_name ?? "…" }];
   if (error) return <Layout me={me} onLogout={onLogout} crumbs={crumbs}><p className="error">{error}</p></Layout>;
   if (!c) return <Layout me={me} onLogout={onLogout} crumbs={crumbs}><div className="skeleton" aria-hidden="true"><span /><span /><span /></div></Layout>;
@@ -278,7 +289,8 @@ export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; o
   const colour = c.placement.house?.colour || c.school.colour || "#1e63d6";
   const tabs: [Tab, string, string][] = [["overview", self ? "My day" : "Overview", "sparkle"], ...(c.timetable ? [["timetable", "Timetable", "calendar-days"] as [Tab, string, string]] : []), ["attendance", "Attendance", "attendance"],
     ...(c.conduct ? [["conduct", "Merits and awards", "star"] as [Tab, string, string]] : []), ["library", "Library", "book"],
-    ["health", "Health", "heart-pulse"], ["school", self ? "My school" : "Teachers and school", "classes"]];
+    ["health", "Health", "heart-pulse"], ["school", self ? "My school" : "Teachers and school", "classes"],
+    ...(!self ? [["details", "Details", "clipboard-list"] as [Tab, string, string]] : [])];
   return (
     <Layout me={me} onLogout={onLogout} crumbs={crumbs}>
       <header className="stu-hero fam-child-hero" style={{ ["--house" as string]: colour }}>
@@ -316,6 +328,7 @@ export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; o
         {tab === "library" && <Library c={c} />}
         {tab === "health" && <Health c={c} />}
         {tab === "school" && <SchoolTab c={c} />}
+        {tab === "details" && <FamilyDetails childId={s.id} name={s.first_name} />}
       </div>
       {modal === "tell" && <TellSchool childId={s.id} name={s.first_name} kinds={c.note_kinds} onClose={() => setModal(null)} onDone={() => { setModal(null); void load(); }} />}
       {modal === "exeat" && <Exeat c={c} me={me} onClose={() => setModal(null)} onDone={() => { setModal(null); void load(); }} />}

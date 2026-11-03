@@ -9,6 +9,7 @@ import { STAGE_LOOK, stageOf, subjectLook } from "./look";
 import { href } from "./router";
 import { PrintSheet } from "./Scanner";
 import { IdCards, type ListRow } from "./StudentYear";
+import { PhotoDay } from "./Profiles";
 import { WeekGrid, type Grid } from "./Timetable";
 import { Avatar, Glyph, hue, Stat } from "./ui";
 
@@ -25,7 +26,7 @@ export default function ClassPage({ me, onLogout, classId }: { me: Me; onLogout:
   const [d, setD] = useState<ClassData | null>(null);
   const [error, setError] = useState("");
   const [sort, setSort] = useState<"name" | "points" | "attendance">("name");
-  const [print, setPrint] = useState<null | "list" | "cards">(null);
+  const [print, setPrint] = useState<null | "list" | "cards" | "photos">(null);
   useEffect(() => { api.raw<ClassData>("GET", `/api/classes/${classId}/page`).then(setD).catch((e) => setError(errorText(e))); }, [classId]);
   if (error) return <Layout me={me} onLogout={onLogout} crumbs={[{ label: "Home", href: "#/" }, { label: "Class" }]}><NotYours text="This class isn't one of yours." /></Layout>;
   if (!d) return <Layout me={me} onLogout={onLogout} crumbs={[{ label: "Home", href: "#/" }]}><div className="skeleton"><span /><span /><span /></div></Layout>;
@@ -45,6 +46,7 @@ export default function ClassPage({ me, onLogout, classId }: { me: Me; onLogout:
           {d.can_mark && <a className="button on-band with-icon" href={href({ page: "register", kind: "school", id: d.class.id, date: todayLocal() })}><Icon name="attendance" size={15} />{d.today.taken ? "Register" : "Take register"}</a>}
           <button className="on-band with-icon" onClick={() => setPrint("list")}><Icon name="printer" size={15} />Class list</button>
           {d.full && <button className="on-band with-icon" onClick={() => setPrint("cards")}><Icon name="id-card" size={15} />ID cards</button>}
+          {d.full && <button className="on-band with-icon" onClick={() => setPrint("photos")}><Icon name="camera" size={15} />Photo day</button>}
         </div>
       </header>
 
@@ -92,6 +94,7 @@ export default function ClassPage({ me, onLogout, classId }: { me: Me; onLogout:
       {d.timetable && (
         <section className="card editor tt-card"><h3 className="with-glyph"><Glyph icon="calendar-days" hue="blue" size={30} />The week</h3><WeekGrid g={d.timetable} today={new Date().getDay() - 1} /></section>
       )}
+      {print === "photos" && <PhotoDay classId={d.class.id} name={d.class.name} onClose={() => { setPrint(null); void api.raw<ClassData>("GET", `/api/classes/${classId}/page`).then(setD); }} />}
       {print === "cards" && <IdCards schoolId={d.school.id} query={`class_id=${d.class.id}`} onClose={() => setPrint(null)} />}
       {print === "list" && (
         <PrintSheet title={`${d.class.name} class list`} onClose={() => setPrint(null)} note={`${d.students.length} students`}>

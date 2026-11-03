@@ -85,7 +85,7 @@ export function NewLoginNotice({ login, onDone }: { login: NewLogin; onDone: () 
   );
 }
 
-export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+export function Field({ label, children, hint }: { label: ReactNode; children: ReactNode; hint?: string }) {
   return (
     <label>
       {label}

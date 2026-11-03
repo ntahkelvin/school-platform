@@ -168,6 +168,7 @@ class StudentDocument(IdMixin, TimestampMixin, Base):
     size: Mapped[int] = mapped_column(Integer)
     data: Mapped[bytes] = mapped_column(LargeBinary)
     uploaded_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    checked: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")   # False: sent by a parent, not yet looked at
 
 
 class StudentEvent(IdMixin, TimestampMixin, Base):
@@ -297,3 +298,19 @@ class ApplicationDoc(IdMixin, TimestampMixin, Base):
     content_type: Mapped[str] = mapped_column(String(100))
     size: Mapped[int] = mapped_column(Integer)
     data: Mapped[bytes] = mapped_column(LargeBinary)
+
+
+class ProfileRequest(IdMixin, TimestampMixin, Base):
+    """A parent's changes to their child's details, waiting for the school to check them."""
+    __tablename__ = "profile_requests"
+
+    school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"), index=True)
+    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), index=True)
+    by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    changes: Mapped[dict] = mapped_column(JSON, default=dict)        # {"home_address": "...", "health.allergies": "...", "photo": "data:..."}
+    collectors: Mapped[list] = mapped_column(JSON, default=list)     # [{name, phone, relationship}] people who may collect
+    status: Mapped[str] = mapped_column(String(12), default="pending", index=True)   # pending, done
+    decisions: Mapped[dict] = mapped_column(JSON, default=dict)      # {field: "approved" | "rejected"}
+    note: Mapped[str | None] = mapped_column(String(300))            # the school's reply
+    decided_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -86,6 +86,11 @@ def school_card(school: School, st: FamilySettings) -> dict:
 
 # ---------- The portal ----------
 
+def build_rows(db, school_id, studs):
+    from app.api.student_year import build_rows as rows
+    return rows(db, school_id, studs)
+
+
 @router.get("/me/family")
 def my_family(user: User = Depends(current_user), db: Session = Depends(get_db)):
     kids = my_children(db, user)
@@ -105,7 +110,7 @@ def my_family(user: User = Depends(current_user), db: Session = Depends(get_db))
                       "gender": s.gender.value, "class_name": s.school_class.name if s.school_class else None, "school_id": str(s.school_id),
                       "house": house.name if house else None, "house_colour": house.colour if house else None, "boarder": s.boarding_status == BoardingStatus.boarder,
                       "is_me": s.user_id == user.id, "status": s.status.value, "today": today_status(db, s, today), "attendance": att["rate_30"],
-                      "points_30": int(pts), "late_books": late, "latest_award": award.title if award else None, "birthday_in": birthday_in(s.date_of_birth, today)})
+                      "points_30": int(pts), "late_books": late, "complete": build_rows(db, s.school_id, [s])[0]["complete"] if s.user_id != user.id else None, "latest_award": award.title if award else None, "birthday_in": birthday_in(s.date_of_birth, today)})
     notes = [note_out(db, n) for n in db.scalars(select(FamilyNote).where(FamilyNote.by_id == user.id).order_by(FamilyNote.created_at.desc()).limit(8))]
     db.commit()
     return {"name": user.full_name, "is_student": any(c["is_me"] for c in cards), "children": cards, "schools": list(schools.values()),
