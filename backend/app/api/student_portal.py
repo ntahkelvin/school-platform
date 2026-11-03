@@ -84,6 +84,20 @@ def badges(db: Session, s: Student) -> list[dict]:
 
 # ---------- The portal's extra parts in one go ----------
 
+def my_checks(db: Session, s: Student) -> dict | None:
+    """Marks out for the student to check against their scripts (shown on My day)."""
+    from app.api.records import current_term
+    from app.api.scorebook import student_view
+    t = current_term(db, s.school_id)
+    if not t:
+        return None
+    try:
+        c = student_view(db, s, t, False)["counts"]
+    except Exception:  # noqa: BLE001 (My day must never fail because of this)
+        return None
+    return {"to_check": c["to_check"], "replied": c["replied"], "due": c["next_due"]} if c["to_check"] or c["replied"] else None
+
+
 @router.get("/me/student/extras")
 def extras(student_id: uuid.UUID | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
     s, how = who(db, user, student_id)
@@ -126,6 +140,7 @@ def extras(student_id: uuid.UUID | None = None, user: User = Depends(current_use
         "homework": (lambda h: {"todo": h["counts"]["todo"], "late": h["counts"]["late"], "next": [{"title": i["title"], "subject": i["subject"], "due": i["due"], "state": i["state"]}
                                                                                 for i in h["items"] if i["state"] in ("late", "todo")][:3]} if h["items"] else None)(
             __import__("app.api.assessment", fromlist=["homework_for"]).homework_for(db, s, False)),
+        "scores_to_check": my_checks(db, s) if how == "self" else None,
         "choices_waiting": [w["title"] for w in __import__("app.api.records", fromlist=["my_choices"]).my_choices(db, s, user) if w["is_open"] and not w["mine"]],
     }
 

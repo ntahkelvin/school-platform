@@ -297,8 +297,11 @@ def sheet(db: Session, sc: Scope, term: Term, user: User, check: bool = False) -
                      "marks": {k: v for k, v in marks[s.id].items()}, "absent": list(absent[s.id]), "components": comp, "total": total, "grade": g, "remark": remark, "filled": filled,
                      "locked": [c["name"] for c in scheme if (s.class_id, c["name"]) in rel and rel[(s.class_id, c["name"])].locked]})
     pos = rank({r["id"]: r["total"] for r in rows})
+    from app.api.scorebook import sheet_checks
+    states, queries = sheet_checks(db, sc, term, scheme, cols, studs, user)
     for r in rows:
         r["position"] = pos.get(r["id"])
+        r["checks"] = states.get(r["id"], {})
     got = [r["total"] for r in rows if r["total"] is not None]
     passmark = min((lo for g, lo, hi, rm in bands if rm.lower() not in ("fail",) and lo > 0), default=40)
     gradecount = defaultdict(int)
@@ -312,7 +315,7 @@ def sheet(db: Session, sc: Scope, term: Term, user: User, check: bool = False) -
         "scope": sc.key, "title": sc.title(), "subject": {"id": str(sc.subject.id), "name": sc.subject.name}, "group": sc.name, "level": sc.level,
         "class_id": str(sc.cls.id) if sc.cls else None, "school_id": str(sc.school.id), "teacher": name_of(db, sc.teacher_id), "teacher_id": str(sc.teacher_id) if sc.teacher_id else None,
         "term": term_out(term), "scheme": scheme, "columns": cols, "bands": [{"grade": g, "min": lo, "max": hi, "remark": rm} for g, lo, hi, rm in bands],
-        "students": rows, "steps": steps, "status": "approved" if all(x["status"] == "approved" for x in steps.values()) else "open",
+        "students": rows, "steps": steps, "queries": queries, "status": "approved" if all(x["status"] == "approved" for x in steps.values()) else "open",
         "can_edit": any(x["can_type"] for x in steps.values()), "is_teacher": sc.teacher_id == user.id, "is_authority": authority(db, user, sc.school),
         "stats": {"average": round(sum(got) / len(got), 1) if got else None, "highest": max(got) if got else None, "lowest": min(got) if got else None,
                   "passed": sum(1 for x in got if x >= passmark), "scored": len(got), "students": len(rows), "complete": sum(1 for r in rows if r["filled"] == len(cols)),

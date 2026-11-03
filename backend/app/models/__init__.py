@@ -26,11 +26,11 @@ from app.models.staffday import DutyAssignment, LeaveRequest, LessonNote, StaffA
 from app.models.tenancy import Branch, School, SchoolGroup, SchoolType
 from app.models.users import Membership, Role, User
 
-from app.models.assessment import (AssessmentWindow, Assignment, ComponentRelease, ReportCard, ResultSettings, Score, SheetStatus, SheetStep, Submission,
+from app.models.assessment import (AssessmentWindow, Assignment, ComponentRelease, ReportCard, ResultSettings, Score, ScoreBookEntry, ScoreCheck, SheetStatus, SheetStep, Submission,
                                    WindowOpening)
 
 __all__ = [
-    "Assignment", "ReportCard", "Score", "SheetStatus", "Submission", "AssessmentWindow", "ComponentRelease", "ResultSettings", "SheetStep", "WindowOpening",
+    "Assignment", "ReportCard", "Score", "SheetStatus", "Submission", "AssessmentWindow", "ComponentRelease", "ResultSettings", "SheetStep", "WindowOpening", "ScoreBookEntry", "ScoreCheck",
     "Board", "BoardMember",
     "AssessmentComponent", "AssessmentScheme", "Bed", "Club", "ClubKind", "Department", "DepartmentKind",
     "EventCategory", "Facility", "FacilityKind", "GradeBand", "GradingScale", "Hostel", "HostelGender", "HostelRoom",

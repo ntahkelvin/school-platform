@@ -136,6 +136,7 @@ class SheetStep(IdMixin, TimestampMixin, Base):
     stage: Mapped[int] = mapped_column(Integer, default=0)                      # which check it is waiting for (0 first, 1 second)
     waiting_for_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
     row_notes: Mapped[dict] = mapped_column(JSON, default=dict)                 # {student id: what to fix} when sent back
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # first approval: students see it from then
     history: Mapped[list] = mapped_column(JSON, default=list)                   # [{at, by, action, note}]
 
 
@@ -151,4 +152,38 @@ class ComponentRelease(IdMixin, TimestampMixin, Base):
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     snapshot: Mapped[dict] = mapped_column(JSON, default=dict)                  # {student id: {subject: {"marks": {...}, "total": n}}} as families see it
+    history: Mapped[list] = mapped_column(JSON, default=list)
+
+
+class ScoreBookEntry(IdMixin, TimestampMixin, Base):
+    """What a student wrote down from their marked script, to compare with the official mark."""
+    __tablename__ = "score_book"
+    __table_args__ = (UniqueConstraint("term_id", "student_id", "subject_id", "key", name="uq_score_book"),)
+
+    term_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("terms.id", ondelete="CASCADE"), index=True)
+    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), index=True)
+    subject_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"))
+    key: Mapped[str] = mapped_column(String(80))                                # "CA1", "CA1 › Test", "Exam"
+    value: Mapped[float] = mapped_column(Float)
+    photo: Mapped[str | None] = mapped_column(Text)                             # a photo of the script (small JPEG data URL)
+    note: Mapped[str | None] = mapped_column(String(300))
+
+
+class ScoreCheck(IdMixin, TimestampMixin, Base):
+    """A student's answer to an approved test in one subject: confirmed, or queried (and how the query went)."""
+    __tablename__ = "score_checks"
+    __table_args__ = (UniqueConstraint("term_id", "student_id", "subject_id", "component", name="uq_score_check"),)
+
+    term_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("terms.id", ondelete="CASCADE"), index=True)
+    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), index=True)
+    subject_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"))
+    component: Mapped[str] = mapped_column(String(50))
+    scope: Mapped[str] = mapped_column(String(120), index=True)
+    # confirmed, queried, answered (teacher kept the mark), escalated (with the head), correcting, corrected, closed (head kept it)
+    status: Mapped[str] = mapped_column(String(12), default="confirmed")
+    query_text: Mapped[str | None] = mapped_column(String(600))
+    claimed: Mapped[float | None] = mapped_column(Float)
+    query_photo: Mapped[str | None] = mapped_column(Text)
+    reply: Mapped[str | None] = mapped_column(String(600))
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     history: Mapped[list] = mapped_column(JSON, default=list)

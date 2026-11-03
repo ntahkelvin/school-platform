@@ -17,14 +17,17 @@ interface TermInfo { id: string; name: string; number: number; session: string; 
 interface Col { key: string; label: string; group: string | null; max: number }
 interface Band { grade: string; min: number; max: number; remark: string }
 interface SheetRow { id: string; name: string; first_name: string; admission_no: string; thumb: string | null; class_name: string | null; marks: Record<string, number | null>;
-  absent: string[]; components: Record<string, number | null>; total: number | null; grade: string | null; remark: string | null; filled: number; position: string | null; locked: string[] }
+  absent: string[]; components: Record<string, number | null>; total: number | null; grade: string | null; remark: string | null; filled: number; position: string | null; locked: string[]; checks: Record<string, string> }
+export interface SheetQuery { id: string; student_id: string; student: string; component: string; status: string; label: string; text: string | null; claimed: number | null;
+  has_photo: boolean; official: Record<string, number | null>; total: number | null; recorded: Record<string, { value: number }>; reply: string | null;
+  history: { at: string; by: string; action: string; note: string | null }[]; locked: boolean; can_answer: boolean; can_decide: boolean }
 export interface Step { status: string; label: string; waiting_for: string | null; waiting_for_id: string | null; can_type: boolean; why_not: string | null;
   deadline: { closes_at: string | null; closed: boolean; open_for_me: boolean; opened_until: string | null }; locked_classes: string[]; published_classes: string[];
   locked: boolean; published: boolean; can_submit: boolean; can_check: boolean; row_notes: Record<string, string>; history: { at: string; by: string; action: string; note: string | null }[] }
 export interface Sheet {
   scope: string; title: string; subject: { id: string; name: string }; group: string; level: string; class_id: string | null; school_id: string; teacher: string | null; term: TermInfo;
   scheme: { name: string; max: number; parts: { name: string; max: number }[] }[]; columns: Col[]; bands: Band[]; students: SheetRow[]; status: string;
-  steps: Record<string, Step>; can_edit: boolean; is_teacher: boolean; is_authority: boolean; teacher_id: string | null;
+  steps: Record<string, Step>; queries: SheetQuery[]; can_edit: boolean; is_teacher: boolean; is_authority: boolean; teacher_id: string | null;
   checks?: Record<string, { warnings: { level: string; text: string }[] }>;
   stats: { average: number | null; highest: number | null; lowest: number | null; passed: number; scored: number; students: number; complete: number; grades: Record<string, number>; pass_mark: number };
   homework: { id: string; title: string; kind: string; max_score: number; counts_to: string | null; marked: number }[];
@@ -115,7 +118,9 @@ function Ring({ value, size = 54, label }: { value: number; size?: number; label
 export function MarkingCard() {
   const [s, setS] = useState<MySheet[] | null>(null);
   const [w, setW] = useState<Work[]>([]);
-  useEffect(() => { aapi.mySheets().then(setS).catch(() => setS([])); aapi.work().then((x) => setW(x.assignments)).catch(() => {}); }, []);
+  const [q, setQ] = useState<{ id: string; scope: string; as: string; title: string; component: string; student: string }[]>([]);
+  useEffect(() => { aapi.mySheets().then(setS).catch(() => setS([])); aapi.work().then((x) => setW(x.assignments)).catch(() => {});
+    api.raw<typeof q>("GET", "/api/me/score-queries").then((x) => setQ(x.filter((y) => y.as === "teacher"))).catch(() => {}); }, []);
   if (!s || (s.length === 0 && w.length === 0)) return null;
   const open = s.filter((x) => x.status !== "submitted");
   const toMark = w.reduce((n, x) => n + x.to_mark, 0);
@@ -126,6 +131,7 @@ export function MarkingCard() {
       <div className="as-mini-stats">
         <a href={href({ page: "marks", tab: "sheets" })}><b>{open.length}</b><small>score sheet{open.length === 1 ? "" : "s"} to finish</small></a>
         <a href={href({ page: "marks", tab: "homework" })}><b>{toMark}</b><small>piece{toMark === 1 ? "" : "s"} of work to mark</small></a>
+        {q.length > 0 && <a href={href({ page: "sheet", scope: q[0].scope })} style={hue("violet")}><b>{q.length}</b><small>student quer{q.length === 1 ? "y" : "ies"} to answer</small></a>}
       </div>
       <ul className="as-mini-sheets">{open.slice(0, 4).map((x) => (
         <li key={x.scope}><a href={href({ page: "sheet", scope: x.scope })} style={hue(subjectLook(x.subject).hue)}>
@@ -281,7 +287,9 @@ export function SheetPage({ me, onLogout, scope }: { me: Me; onLogout: () => voi
                   <td className="muted">{ri + 1}</td>
                   <td className="name">{r.thumb ? <img className="mini-face" src={r.thumb} alt="" /> : <Avatar name={r.name} size={28} />}
                     <span>{r.name}{d.level && r.class_name && d.group !== r.class_name && <small className="muted"> {r.class_name}</small>}
-                      {notes[r.id] && <small className="as-row-note">⚠ {notes[r.id].join(" · ")}</small>}</span></td>
+                      {notes[r.id] && <small className="as-row-note">⚠ {notes[r.id].join(" · ")}</small>}
+                      {Object.entries(r.checks ?? {}).filter(([, v]) => !["match", "confirmed", "accepted", "closed", "corrected", "answered"].includes(v)).map(([k, v]) => (
+                        <small key={k} className={`as-chk s-${v}`}>{k}: {CHECK_WORD[v] ?? v}</small>))}</span></td>
                   {cols.map((c, ci) => { const v = valueOf(r, c.key); const ok = editable(r, c); return (
                     <td key={c.key} className={`${bad(v, c) ? "bad" : ""}${ok ? "" : " shut"}`}>
                       <input data-cell={`${ri}-${ci}`} inputMode="decimal" value={v} disabled={!ok} aria-label={`${r.name} ${c.key}`}
@@ -296,6 +304,7 @@ export function SheetPage({ me, onLogout, scope }: { me: Me; onLogout: () => voi
           </table>
         </div>
       </section>
+      {d.queries.length > 0 && <QueriesPanel d={d} onDone={() => void load(d.term.id)} />}
       {allHistory.length > 0 && (
         <section className="card editor">
           <button className="text-link with-icon" onClick={() => setHistory(!history)}><Icon name="history" size={15} />{history ? "Hide" : "Show"} the history of this sheet ({allHistory.length})</button>
@@ -306,6 +315,63 @@ export function SheetPage({ me, onLogout, scope }: { me: Me; onLogout: () => voi
       {modal === "homework" && <UseHomework d={d} onClose={() => setModal(null)} onDone={() => { setModal(null); void load(d.term.id); }} />}
       {modal && typeof modal === "object" && <CheckBox d={d} comp={modal.check} onClose={() => setModal(null)} onDone={() => { setModal(null); void load(d.term.id); }} />}
     </Layout>
+  );
+}
+
+const CHECK_WORD: Record<string, string> = { waiting: "student checking", different: "student's book differs", queried: "❓ query", escalated: "📣 with the head", correcting: "✏️ correcting" };
+
+function QueriesPanel({ d, onDone }: { d: Sheet; onDone: () => void }) {
+  const [open, setOpen] = useState<SheetQuery | null>(null);
+  const [photos, setPhotos] = useState<string[] | null>(null);
+  const waitingMe = d.queries.filter((q) => q.can_answer || q.can_decide).length;
+  return (
+    <section className="card editor as-queries">
+      <h3 className="with-glyph"><Glyph icon="message" hue="violet" size={30} />Students' queries{waitingMe ? <span className="count-badge">{waitingMe}</span> : null}</h3>
+      <p className="small muted">Students compare approved marks with their marked scripts. Keep a mark with a reply, or correct it (a correction goes back to be checked).</p>
+      <ul className="as-qlist">{d.queries.map((q) => (
+        <li key={q.id} className={`s-${q.status}`}>
+          <div className="row wrap"><b className="grow">{q.student} · {q.component}</b><span className="hue-chip" style={hue(({ queried: "violet", escalated: "fuchsia", correcting: "orange", answered: "sky", corrected: "teal", closed: "slate" } as Record<string, string>)[q.status] ?? "slate")}>{q.label}</span></div>
+          <p className="small">Sheet: <b>{fmt(q.total)}</b>{q.claimed != null ? <> · student says <b>{fmt(q.claimed)}</b></> : null}{Object.keys(q.recorded).length ? <> · score book {Object.values(q.recorded).map((r) => fmt(r.value)).join(" + ")}</> : null}</p>
+          <ol className="as-qthread">{q.history.filter((h) => h.note).map((h, i) => <li key={i}><small className="muted">{h.by} · {h.action}</small> {h.note}</li>)}</ol>
+          <div className="row wrap">
+            {q.has_photo && <button className="small-btn with-icon" onClick={async () => setPhotos((await api.raw<{ photos: string[] }>("GET", `/api/score-checks/${q.id}/photo`)).photos)}><Icon name="camera" size={13} />See the script</button>}
+            <span className="grow" />
+            {(q.can_answer || q.can_decide) && <button className="small-btn primary with-icon" onClick={() => setOpen(q)}><Icon name="message" size={13} />{q.can_answer ? "Answer" : "Decide"}</button>}
+          </div>
+        </li>))}</ul>
+      {open && <AnswerBox d={d} q={open} onClose={() => setOpen(null)} onDone={() => { setOpen(null); onDone(); }} />}
+      {photos && <Modal wide title="The student's script" onClose={() => setPhotos(null)}><div className="as-photos">{photos.map((p, i) => <img key={i} src={p} alt="Script" />)}</div></Modal>}
+    </section>
+  );
+}
+
+function AnswerBox({ d, q, onClose, onDone }: { d: Sheet; q: SheetQuery; onClose: () => void; onDone: () => void }) {
+  const head = q.can_decide;
+  const [mode, setMode] = useState<"keep" | "change">("keep");
+  const [reply, setReply] = useState("");
+  const keys = d.columns.filter((c) => c.key.split(" › ")[0] === q.component);
+  const [marks, setMarks] = useState<Record<string, string>>(Object.fromEntries(keys.map((c) => [c.key, q.official[c.key] == null ? "" : String(q.official[c.key])])));
+  const [busy, error, run] = useBusy();
+  const bad = keys.some((c) => marks[c.key] === "" || Number.isNaN(Number(marks[c.key])) || Number(marks[c.key]) > c.max || Number(marks[c.key]) < 0);
+  return (
+    <Modal title={`${head ? "Decide" : "Answer"}: ${q.student} · ${q.component}`} onClose={onClose}>
+      <div className="stack">
+        <p className="as-instr">“{q.text}”</p>
+        <div className="segmented"><button className={mode === "keep" ? "on" : ""} onClick={() => setMode("keep")}>Keep the mark</button>
+          <button className={mode === "change" ? "on" : ""} disabled={q.locked} onClick={() => setMode("change")}>{head ? "Send back to the teacher" : "Correct the mark"}</button></div>
+        {q.locked && <p className="small muted">🔒 This test is published. The principal, VP or ICT must take the padlock off before a mark can change.</p>}
+        {mode === "change" && !head && <div className="form-grid">{keys.map((c) => <Field key={c.key} label={`${c.key} (out of ${c.max})`}><input inputMode="decimal" value={marks[c.key]} onChange={(e) => setMarks({ ...marks, [c.key]: e.target.value })} /></Field>)}</div>}
+        <Field label={head ? "Your decision (the student and teacher see it)" : "Reply to the student"}><textarea rows={3} maxLength={600} value={reply} onChange={(e) => setReply(e.target.value)}
+          placeholder={mode === "keep" ? "e.g. Question 4 needed the working shown, so 12 is correct" : head ? "e.g. Please re-mark question 2" : "e.g. You're right, I added it up wrongly"} /></Field>
+        {mode === "change" && !head && <p className="small muted">The corrected mark goes back to the unit head (or HOD) to check before the student sees it.</p>}
+        {error && <p className="error">{error}</p>}
+        <div className="row"><span className="grow" /><button onClick={onClose}>Cancel</button>
+          <button className="primary" disabled={busy || reply.trim().length < 2 || (mode === "change" && !head && bad)} onClick={() => run(async () => {
+            if (head) await api.raw("POST", `/api/score-checks/${q.id}/decide`, { action: mode === "keep" ? "keep" : "send_back", reply });
+            else await api.raw("POST", `/api/score-checks/${q.id}/answer`, { action: mode === "keep" ? "keep" : "correct", reply, marks: mode === "change" ? Object.fromEntries(keys.map((c) => [c.key, Number(marks[c.key])])) : {} });
+            onDone(); })}>Send</button></div>
+      </div>
+    </Modal>
   );
 }
 

@@ -12,7 +12,9 @@ import { Field, Glyph, hue, Modal, Stat } from "./ui";
 
 interface ToCheck { scope: string; component: string; term_id: string; term: string; title: string; subject: string; group: string; teacher: string | null; students: number;
   average: number | null; handed_in_at: string | null; stage: number; stages: number; warnings: { level: string; text: string }[] }
-interface Cell { sheets: number; draft: number; submitted: number; returned: number; approved: number; ready: boolean; published: boolean; locked: boolean; release_id: string | null; published_at: string | null }
+interface HeadQuery { id: string; scope: string; title: string; subject: string; component: string; student: string; text: string | null; status: string; as: string; at: string }
+interface Cell { sheets: number; draft: number; submitted: number; returned: number; approved: number; ready: boolean; approved_all: boolean;
+  students_check: { students: number; done: number; open_queries: number; to_confirm: number; due_at: string | null } | null; published: boolean; locked: boolean; release_id: string | null; published_at: string | null }
 interface Control {
   term: { id: string; name: string; session: string; terms: { id: string; name: string }[] }; settings: { checks: number; confirm_days: number };
   components: { component: string; closes_at: string | null; closed: boolean; openings: { id: string; teacher: string; teacher_id: string | null; until: string; reason: string | null; by: string | null }[] }[];
@@ -23,6 +25,7 @@ interface FamTerm { term_id: string; term: string; session: string; tests: { nam
 
 const capi = {
   toCheck: () => api.raw<ToCheck[]>("GET", "/api/me/to-check"),
+  queries: () => api.raw<HeadQuery[]>("GET", "/api/me/score-queries").then((x) => x.filter((q) => q.as === "head")),
   control: (sid: string, t?: string | null) => api.raw<Control>("GET", `/api/schools/${sid}/score-control${t ? `?term_id=${t}` : ""}`),
   settings: (sid: string, b: unknown) => api.raw("PUT", `/api/schools/${sid}/result-settings`, b),
   deadline: (sid: string, b: unknown) => api.raw("PUT", `/api/schools/${sid}/score-deadlines`, b),
@@ -43,14 +46,16 @@ const fromLocal = (v: string) => (v ? new Date(v).toISOString() : null);
 
 export function ToCheckCard() {
   const [d, setD] = useState<ToCheck[] | null>(null);
-  useEffect(() => { capi.toCheck().then(setD).catch(() => setD([])); }, []);
-  if (!d || d.length === 0) return null;
+  const [q, setQ] = useState<HeadQuery[]>([]);
+  useEffect(() => { capi.toCheck().then(setD).catch(() => setD([])); capi.queries().then(setQ).catch(() => {}); }, []);
+  if (!d || (d.length === 0 && q.length === 0)) return null;
   const flagged = d.filter((x) => x.warnings.length).length;
   return (
     <section className="card editor portal-card" style={hue("amber")}>
       <div className="card-head"><h2 className="with-glyph"><Glyph icon="clipboard-list" hue="amber" size={34} />Scores to check</h2><span className="grow" />
         <a className="small-btn with-icon" href="#/check"><Icon name="arrow-right" size={13} />Open</a></div>
-      <p><b className="as-big-n">{d.length}</b> test{d.length === 1 ? "" : "s"} handed in and waiting for you{flagged ? <> · <span style={{ color: "#d97706" }}>{flagged} with something to look at</span></> : null}.</p>
+      <p><b className="as-big-n">{d.length}</b> test{d.length === 1 ? "" : "s"} handed in and waiting for you{flagged ? <> · <span style={{ color: "#d97706" }}>{flagged} with something to look at</span></> : null}.
+        {q.length > 0 && <><br /><b className="as-big-n" style={{ color: "#c026d3" }}>{q.length}</b> student quer{q.length === 1 ? "y" : "ies"} asking you to look.</>}</p>
       <ul className="as-mini-sheets">{d.slice(0, 4).map((x) => <li key={x.scope + x.component}><a href={href({ page: "sheet", scope: x.scope })} style={hue(subjectLook(x.subject).hue)}>
         <span className="grow"><b>{x.component}</b> {x.title}</span>{x.warnings.length > 0 && <span className="hue-chip" style={hue("amber")}>⚠ {x.warnings.length}</span>}</a></li>)}</ul>
     </section>
@@ -59,8 +64,9 @@ export function ToCheckCard() {
 
 export function CheckPage({ me, onLogout }: { me: Me; onLogout: () => void }) {
   const [d, setD] = useState<ToCheck[] | null>(null);
+  const [q, setQ] = useState<HeadQuery[]>([]);
   const [error, setError] = useState("");
-  useEffect(() => { capi.toCheck().then(setD).catch((e) => setError(errorText(e))); }, []);
+  useEffect(() => { capi.toCheck().then(setD).catch((e) => setError(errorText(e))); capi.queries().then(setQ).catch(() => {}); }, []);
   return (
     <Layout wide me={me} onLogout={onLogout} crumbs={[{ label: "Home", href: "#/" }, { label: "Scores to check" }]}>
       <header className="class-hero as-hero" style={hue("amber")}>
@@ -69,6 +75,14 @@ export function CheckPage({ me, onLogout }: { me: Me; onLogout: () => void }) {
         <div className="grow"><h1>Scores to check</h1><p>Tests handed in by teachers in your unit or department. Open one, look at the marks, then approve it or send it back.</p></div>
       </header>
       {error && <p className="error">{error}</p>}
+      {q.length > 0 && (
+        <section className="card editor">
+          <h3 className="with-glyph"><Glyph icon="megaphone" hue="fuchsia" size={30} />Students asking you to look at a mark</h3>
+          <p className="small muted">The teacher kept the mark and the student still disagrees. Open the sheet, read the thread and the script, then keep the mark or send it back to the teacher.</p>
+          <div className="as-check-list">{q.map((x) => <a key={x.id} className="as-check-item" href={href({ page: "sheet", scope: x.scope })} style={hue("fuchsia")}>
+            <b>{x.student} · {x.component} · {x.title}</b><small className="muted">“{x.text}”</small></a>)}</div>
+        </section>
+      )}
       {!d ? <div className="skeleton"><span /><span /></div> : d.length === 0 ? <div className="adm-empty"><span>🎉</span><p><b>Nothing waiting for you.</b></p><p className="muted small">When a teacher hands in a test, it shows here and on your home page.</p></div> : (
         <div className="as-check-list">{d.map((x) => { const l = subjectLook(x.subject); return (
           <a key={x.scope + x.component} className="as-check-item" href={href({ page: "sheet", scope: x.scope })} style={hue(l.hue)}>
@@ -128,7 +142,16 @@ export function ControlRoom({ schoolId }: { schoolId: string }) {
       <section className="card editor">
         <div className="row wrap"><h3 className="grow with-glyph"><Glyph icon="send" hue="fuchsia" size={30} />Publish to families</h3>
           {d.can_publish && Object.entries(pick).filter(([, v]) => v.length).map(([comp, ids]) => (
-            <button key={comp} className="primary with-icon" disabled={busy} onClick={() => run(async () => { const x = await capi.publish(schoolId, { term_id: d.term.id, component: comp, class_ids: ids }); await load(); alertSoft(`${comp} published for ${x.published} class${x.published === 1 ? "" : "es"}`); })}>
+            <button key={comp} className="primary with-icon" disabled={busy} onClick={() => run(async () => {
+              const body = { term_id: d.term.id, component: comp, class_ids: ids };
+              let x: { published: number };
+              try { x = await capi.publish(schoolId, body); }
+              catch (e) {
+                const msg = errorText(e);
+                if (!msg.startsWith("Not ready") || !confirm(`${msg}.\n\nPublish anyway? The marks lock, so students who haven't checked yet can no longer query them.`)) throw e;
+                x = await capi.publish(schoolId, { ...body, even_if_not_ready: true });
+              }
+              await load(); alertSoft(`${comp} published for ${x.published} class${x.published === 1 ? "" : "es"}`); })}>
               <Icon name="send" size={14} />Publish {comp} for {ids.length} class{ids.length === 1 ? "" : "es"}</button>))}</div>
         <p className="small muted">Tick the classes whose test is fully approved, then publish. Students and parents get a notice and see the marks; the test is locked. Tap 🔒 to take the padlock off for a correction.</p>
         <div className="as-sheet-wrap">
@@ -141,9 +164,12 @@ export function ControlRoom({ schoolId }: { schoolId: string }) {
                     <div className="row">
                       {x.locked ? <button className="as-lock" title="Published and locked. Take the padlock off" disabled={!d.can_publish} onClick={() => setModal({ unlock: { rid: x.release_id!, cls: c.id, comp: k } })}>🔒</button>
                         : x.published ? <button className="as-lock open" title="Padlock off for corrections. Publish again when they are approved" disabled={!d.can_publish || busy} onClick={() => run(async () => { await capi.lock(x.release_id!); await load(); })}>🔓</button>
-                        : d.can_publish && <input type="checkbox" aria-label={`Publish ${k} for ${c.name}`} checked={on} disabled={!x.ready && !x.published} onChange={() => toggle(k, c.id)} />}
+                        : d.can_publish && <input type="checkbox" aria-label={`Publish ${k} for ${c.name}`} checked={on} disabled={!x.ready && !(x.approved_all && !x.published)} onChange={() => toggle(k, c.id)} />}
                       <span className="as-bar"><span style={{ width: `${pct}%` }} /></span></div>
-                    <small>{x.locked ? "Published" : x.ready ? (x.published ? "Ready to publish again" : "Ready to publish") : `${x.approved}/${x.sheets} approved`}</small>
+                    <small>{x.locked ? "Published" : x.ready ? (x.published ? "Ready to publish again" : "Ready to publish") : x.approved_all ? "Approved · students checking" : `${x.approved}/${x.sheets} approved`}</small>
+                    {!x.locked && x.students_check && !x.ready && <small className="as-mini-counts"><span>{x.students_check.done}/{x.students_check.students} students done</span>
+                      {x.students_check.open_queries > 0 && <span className="rd">{x.students_check.open_queries} quer{x.students_check.open_queries === 1 ? "y" : "ies"}</span>}
+                      {x.students_check.due_at && <span className="am">until {new Date(x.students_check.due_at).toLocaleDateString("en-GB", { weekday: "short", day: "numeric" })}</span>}</small>}
                     {!x.locked && (x.submitted > 0 || x.returned > 0) && <small className="as-mini-counts">{x.submitted > 0 && <span className="am">{x.submitted} checking</span>}{x.returned > 0 && <span className="rd">{x.returned} sent back</span>}</small>}
                     {x.published && !x.locked && x.ready && d.can_publish && <label className="small"><input type="checkbox" checked={on} onChange={() => toggle(k, c.id)} /> publish again</label>}
                   </td>); })}</tr>))}</tbody>
@@ -177,7 +203,7 @@ function SettingsCard({ schoolId, d, onDone }: { schoolId: string; d: Control; o
           <div className="segmented">
             <button className={d.settings.checks === 1 ? "on" : ""} disabled={!d.can_publish || busy} onClick={() => save({ checks: 1 })}>One: unit head (or HOD)</button>
             <button className={d.settings.checks === 2 ? "on" : ""} disabled={!d.can_publish || busy} onClick={() => save({ checks: 2 })}>Two: unit head, then HOD</button></div></div>
-        <div><b>Days students have to confirm</b><small className="muted block">Used in the next stage: students check approved marks against their scripts.</small>
+        <div><b>Days students have to confirm</b><small className="muted block">From approval, students check marks against their scripts. After this, marks they didn't query count as accepted.</small>
           <select value={d.settings.confirm_days} disabled={!d.can_publish || busy} onChange={(e) => save({ confirm_days: +e.target.value })}>{[2, 3, 4, 5, 7, 10, 14].map((n) => <option key={n} value={n}>{n} school days</option>)}</select></div>
       </div>
       {error && <p className="error">{error}</p>}

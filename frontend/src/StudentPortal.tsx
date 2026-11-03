@@ -22,6 +22,7 @@ export interface Extras {
     books: { id: string; title: string; author: string | null; rating: number | null; review: string | null; finished_on: string; library: boolean }[] };
   goals: Goal[]; goal_areas: Record<string, string>; worries: Worry[]; worry_kinds: Record<string, string>;
   notices: { id: string; text: string; icon: string; at: string; link: string | null }[]; greeting: string; choices_waiting?: string[];
+  scores_to_check?: { to_check: number; replied: number; due: string | null } | null;
   homework?: { todo: number; late: number; next: { title: string; subject: string; due: string; state: string }[] } | null;
 }
 interface LibBook { id: string; title: string; author: string | null; category: string; subject: string | null; level: string | null; shelf: string | null; summary: string | null;
@@ -69,6 +70,14 @@ export function DayExtras({ x, go }: { x: Extras; go: (t: string) => void }) {
           <div><strong>{x.greeting}</strong>
             <span className="small">{close ? `${close.name}: ${close.value} of ${close.next} ${close.what}. Keep going!` : "You've earned every badge. Amazing!"}</span></div>
         </section>
+      )}
+      {x.scores_to_check && (
+        <button className="sp-choose-banner" style={hue("amber")} onClick={() => go("myscores")}>
+          <Glyph icon="clipboard-list" hue="amber" size={40} />
+          <span className="grow"><b>{x.scores_to_check.to_check ? `${x.scores_to_check.to_check} new mark${x.scores_to_check.to_check === 1 ? "" : "s"} to check against your scripts` : "Your teacher replied to your query"}</b>
+            <small className="block">{x.scores_to_check.due ? `Check by ${new Date(x.scores_to_check.due).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short" })}` : "Open Check my scores"}</small></span>
+          <Icon name="arrow-right" size={18} />
+        </button>
       )}
       {x.homework && x.homework.next.length > 0 && (
         <button className="sp-hw-strip" onClick={() => go("homework")}>

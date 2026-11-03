@@ -32,6 +32,7 @@ backend/alembic/versions/0025_student_portal.py
 backend/alembic/versions/0026_academic_records.py
 backend/alembic/versions/0027_assessment.py
 backend/alembic/versions/0028_score_checks.py
+backend/alembic/versions/0029_score_book.py
 backend/app/__init__.py
 backend/app/api/__init__.py
 backend/app/api/academics.py
@@ -62,6 +63,7 @@ backend/app/api/profiles.py
 backend/app/api/records.py
 backend/app/api/rights.py
 backend/app/api/schools.py
+backend/app/api/scorebook.py
 backend/app/api/staff.py
 backend/app/api/staff_day.py
 backend/app/api/staff_records.py
@@ -145,6 +147,7 @@ frontend/src/Layout.tsx
 frontend/src/Library.tsx
 frontend/src/Login.tsx
 frontend/src/Logins.tsx
+frontend/src/MyScores.tsx
 frontend/src/Operations.tsx
 frontend/src/OpsMe.tsx
 frontend/src/OrgPage.tsx

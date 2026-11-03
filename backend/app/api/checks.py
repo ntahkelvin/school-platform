@@ -106,7 +106,7 @@ def get_step(db: Session, term_id: uuid.UUID, scope: str, comp: str, make: bool 
     if not st:
         legacy = db.scalar(select(SheetStatus).where(SheetStatus.term_id == term_id, SheetStatus.scope == scope))
         if legacy and legacy.status == "submitted":                   # handed in before tests were checked one by one
-            st = SheetStep(term_id=term_id, scope=scope, component=comp, status="approved", stage=0, row_notes={}, history=[])
+            st = SheetStep(term_id=term_id, scope=scope, component=comp, status="approved", stage=0, row_notes={}, history=[], approved_at=legacy.updated_at)
             if make:
                 db.add(st)
             return st
@@ -240,8 +240,12 @@ def check(scope: str, data: CheckIn, user: User = Depends(current_user), db: Ses
             st.waiting_for_id = ch[st.stage]
             notify(db, [st.waiting_for_id], sc.school.id, f"{data.component} for {sc.title()} passed the first check. Please check it.", "#/check", "clipboard-list", "request")
         else:
+            first = st.approved_at is None
             st.status, st.waiting_for_id = "approved", None
+            st.approved_at = st.approved_at or now()
             notify(db, [sc.teacher_id], sc.school.id, f"{data.component} for {sc.title()} is approved.", f"#/sheet/{sc.key}", "circle-check")
+            from app.api.scorebook import on_approved
+            on_approved(db, sc, term, data.component, first)
     db.commit()
     return {"status": st.status, "label": STATUS_LABEL[st.status]}
 
@@ -366,7 +370,11 @@ def control(school_id: uuid.UUID, term_id: uuid.UUID | None = None, user: User =
                 s = steps.get((k, comp))
                 n[s.status if s else ("approved" if k in legacy else "draft")] += 1
             r = rel.get((c.id, comp))
-            cell[comp] = {"sheets": len(keys), **{k: n[k] for k in ("draft", "submitted", "returned", "approved")}, "ready": bool(keys) and n["approved"] == len(keys),
+            from app.api.scorebook import class_progress
+            prog = class_progress(db, term, c, comp, studs, keys, stg.confirm_days) if keys and n["approved"] == len(keys) else None
+            cell[comp] = {"sheets": len(keys), **{k: n[k] for k in ("draft", "submitted", "returned", "approved")},
+                          "ready": bool(keys) and n["approved"] == len(keys) and bool(prog) and prog["open_queries"] == 0 and prog["to_confirm"] == 0,
+                          "approved_all": bool(keys) and n["approved"] == len(keys), "students_check": prog,
                           "published": bool(r), "locked": bool(r and r.locked), "release_id": str(r.id) if r else None,
                           "published_at": r.published_at.isoformat() if r else None}
         rows.append({"id": str(c.id), "name": c.name, "level": c.level, "students": len(studs), "tests": cell})
@@ -497,9 +505,15 @@ def publish_test(school_id: uuid.UUID, data: ReleaseIn, user: User = Depends(cur
         if not cell:
             raise not_found("Class")
         if not cell["ready"] and not data.even_if_not_ready:
-            waiting.append(f"{row['name']} ({cell['approved']}/{cell['sheets']} approved)")
+            p = cell["students_check"]
+            if not cell["approved_all"]:
+                waiting.append(f"{row['name']} ({cell['approved']}/{cell['sheets']} sheets approved)")
+            elif p:
+                bits = ([f"{p['open_queries']} quer{'ies' if p['open_queries'] != 1 else 'y'} open"] if p["open_queries"] else []) + \
+                       ([f"{p['to_confirm']} mark{'s' if p['to_confirm'] != 1 else ''} not yet checked by students"] if p["to_confirm"] else [])
+                waiting.append(f"{row['name']} ({', '.join(bits)})")
     if waiting:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Not every sheet is approved yet: " + ", ".join(waiting[:6]))
+        raise HTTPException(status.HTTP_409_CONFLICT, "Not ready yet: " + "; ".join(waiting[:6]))
     for cid in data.class_ids:
         c = db.get(SchoolClass, cid)
         snap, size = snapshot(db, c, term, data.component)

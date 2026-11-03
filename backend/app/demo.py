@@ -44,7 +44,7 @@ def term_now(db, school) -> Term:
     return pick
 
 
-def fill(db, c: SchoolClass, term: Term, school_id, full: bool, rnd: random.Random) -> list[Student]:
+def fill(db, c: SchoolClass, term: Term, school_id, full: bool, rnd: random.Random, only: int | None = None) -> list[Student]:
     from app.api.assessment import Scope, columns_of, scheme_for
     studs = list(db.scalars(select(Student).where(Student.class_id == c.id, Student.status == StudentStatus.active)))
     ability = {s.id: rnd.gauss(62, 13) for s in studs}
@@ -60,7 +60,7 @@ def fill(db, c: SchoolClass, term: Term, school_id, full: bool, rnd: random.Rand
         have = {(r.student_id, r.component) for r in db.scalars(select(Score).where(Score.term_id == term.id, Score.subject_id == cs.subject_id,
                                                                                     Score.student_id.in_([s.id for s in members])))}
         bias = rnd.gauss(0, 6)
-        fill_comps = names if full else names[:1] + (names[1:2] if i % 2 == 0 else [])
+        fill_comps = names[:only] if only else names if full else names[:1] + (names[1:2] if i % 3 != 2 else [])
         for s in members:
             for col in [x for x in cols if x["key"].split(" › ")[0] in fill_comps]:
                 if (s.id, col["key"]) in have:
@@ -69,7 +69,7 @@ def fill(db, c: SchoolClass, term: Term, school_id, full: bool, rnd: random.Rand
                 db.add(Score(term_id=term.id, student_id=s.id, subject_id=cs.subject_id, component=col["key"], value=round(col["max"] * pct * 2) / 2, by_id=cs.teacher_user_id))
                 added += 1
     db.flush()
-    print(f"  {c.name}: {added} marks added ({'every CA and exam, handed in' if full else 'CA1 for every subject and CA2 for half of them'}).")
+    print(f"  {c.name}: {added} marks added ({' and '.join(names[:only]) + ' for every subject' if only else 'every CA and exam' if full else 'CA1 for every subject and CA2 for two in three'}).")
     return studs
 
 
@@ -100,7 +100,7 @@ def checks_and_padlocks(db, school, term: Term, full_class: SchoolClass, half_cl
         mark(st, sc, "Handed in", sc.teacher_id, None, days)
         if state == "approved":
             mark(st, sc, "Approved", ch[0] if ch else None, None, days - 1)
-            st.status, st.waiting_for_id = "approved", None
+            st.status, st.waiting_for_id, st.approved_at = "approved", None, now - timedelta(days=days - 1)
         elif state == "submitted":
             st.status, st.waiting_for_id = "submitted", (ch[0] if ch else None)
         elif state == "returned":
@@ -138,13 +138,109 @@ def checks_and_padlocks(db, school, term: Term, full_class: SchoolClass, half_cl
             with_ca2 = [k for k in keys if db.scalar(select(Score.id).where(Score.term_id == term.id, Score.subject_id == Scope(db, k).subject.id, Score.student_id.in_(ids),
                                                                             Score.component.like(names[1] + "%")).limit(1))]
             for i, k in enumerate(with_ca2):
-                state = ["submitted", "submitted", "returned", "approved", "draft"][i % 5]
+                state = ["approved", "submitted", "approved", "submitted", "returned", "approved", "draft", "approved"][i % 8]
                 if state != "draft":
                     step(k, names[1], state, 2)
             t = next((Scope(db, k).teacher_id for k in keys if Scope(db, k).teacher_id), None)
             if t and not db.scalar(select(WindowOpening.id).where(WindowOpening.term_id == term.id, WindowOpening.teacher_id == t)):
                 db.add(WindowOpening(school_id=school.id, term_id=term.id, component=names[0], teacher_id=t, until=now + timedelta(days=2), reason="Was on leave when CA1 closed"))
-        print(f"  {half_class.name}: {names[0]} approved and published; {names[1] if len(names) > 1 else ''} at every step (with heads, one sent back, typing).")
+        print(f"  {half_class.name}: {names[0]} approved and published; {names[1] if len(names) > 1 else ''} at every step (approved, with heads, one sent back, typing).")
+
+
+
+SCRIPT = ("data:image/svg+xml;utf8," + """<svg xmlns='http://www.w3.org/2000/svg' width='600' height='420' viewBox='0 0 600 420'>
+<rect width='600' height='420' fill='#fffdf5'/>""" + "".join(f"<line x1='0' y1='{y}' x2='600' y2='{y}' stroke='#c7d2fe' stroke-width='1'/>" for y in range(60, 420, 30)) + """
+<line x1='60' y1='0' x2='60' y2='420' stroke='#fca5a5' stroke-width='2'/>
+<text x='80' y='50' font-family='Comic Sans MS, cursive' font-size='24' fill='#1e3a8a'>CA2 test (sample)</text>
+<text x='80' y='110' font-family='Comic Sans MS, cursive' font-size='20' fill='#1e3a8a'>1. ...   2. ...   3. ...   4. ...</text>
+<circle cx='470' cy='120' r='62' fill='none' stroke='#dc2626' stroke-width='5'/>
+<text x='470' y='138' text-anchor='middle' font-family='Comic Sans MS, cursive' font-size='46' fill='#dc2626'>15/20</text>
+</svg>""").replace("#", "%23").replace("\n", "")
+
+
+def student_checks(db, school, term: Term, c: SchoolClass, comp: str, rnd: random.Random) -> None:
+    """Students of the class checking an approved test: most write their scores in, some confirm, and a few queries at each step."""
+    from app.api.assessment import Scope, class_subjects
+    from app.api.checks import get_step
+    from app.models import ScoreBookEntry, ScoreCheck
+    now = datetime.now(timezone.utc)
+    studs = sorted(db.scalars(select(Student).where(Student.class_id == c.id, Student.status == StudentStatus.active)), key=lambda s: (s.last_name, s.first_name))
+    approved = [k for _, ks in class_subjects(db, c, studs) for k in ks if (st := get_step(db, term.id, k, comp)) and st.approved_at]
+    if not approved or db.scalar(select(ScoreCheck.id).where(ScoreCheck.term_id == term.id, ScoreCheck.scope.in_(approved)).limit(1)):
+        return
+    def official(s, sc):
+        r = db.scalar(select(Score).where(Score.term_id == term.id, Score.student_id == s.id, Score.subject_id == sc.subject.id, Score.component == comp))
+        return r.value if r else None
+    stories = 0
+    for i, s in enumerate(studs):
+        for j, k in enumerate(approved):
+            sc = Scope(db, k)
+            v = official(s, sc)
+            if v is None:
+                continue
+            roll = rnd.random()
+            if roll < .65:
+                db.add(ScoreBookEntry(term_id=term.id, student_id=s.id, subject_id=sc.subject.id, key=comp, value=v))
+            elif roll < .72:
+                db.add(ScoreBookEntry(term_id=term.id, student_id=s.id, subject_id=sc.subject.id, key=comp, value=min(20, v + 3)))
+            if roll > .9:
+                db.add(ScoreCheck(term_id=term.id, student_id=s.id, subject_id=sc.subject.id, component=comp, scope=k, status="confirmed",
+                                  history=[{"at": now.isoformat(), "by": s.full_name, "action": "Confirmed", "note": None}]))
+    db.flush()
+    # A few queries, one at each step, on the first students (so they are easy to find).
+    teacher = lambda k: (db.get(User, Scope(db, k).teacher_id).full_name if Scope(db, k).teacher_id else "The teacher")  # noqa: E731
+    from app.models import User
+    plan = [("queried", "My script shows {c}, not {v}. Please check question 3.", None),
+            ("answered", "I think question 4 deserved full marks.", "Question 4 was worth half marks because the working was missing. 12 is correct."),
+            ("escalated", "My friend wrote the same answer and got the marks.", "Your answer to question 2 was incomplete, so the mark stays.")]
+    for (state, text, reply), s, k in zip(plan, studs, approved):
+        sc = Scope(db, k)
+        v = official(s, sc)
+        if v is None:
+            continue
+        db.execute(ScoreBookEntry.__table__.delete().where(ScoreBookEntry.term_id == term.id, ScoreBookEntry.student_id == s.id, ScoreBookEntry.subject_id == sc.subject.id))
+        db.execute(ScoreCheck.__table__.delete().where(ScoreCheck.term_id == term.id, ScoreCheck.student_id == s.id, ScoreCheck.subject_id == sc.subject.id))
+        text = text.format(c=f"{min(20, v + 3):g}", v=f"{v:g}")
+        db.add(ScoreBookEntry(term_id=term.id, student_id=s.id, subject_id=sc.subject.id, key=comp, value=min(20, v + 3), photo=SCRIPT if state == "queried" else None))
+        h = [{"at": (now - timedelta(hours=20)).isoformat(), "by": s.full_name, "action": "Queried", "note": text}]
+        if reply:
+            h.append({"at": (now - timedelta(hours=8)).isoformat(), "by": teacher(k), "action": "Kept the mark", "note": reply})
+        if state == "escalated":
+            h.append({"at": (now - timedelta(hours=2)).isoformat(), "by": s.full_name, "action": "Asked the head to look", "note": "I still think it deserves the marks."})
+        db.add(ScoreCheck(term_id=term.id, student_id=s.id, subject_id=sc.subject.id, component=comp, scope=k, status=state, query_text=text, claimed=min(20, v + 3),
+                          query_photo=SCRIPT if state == "queried" else None, reply=reply, answered_at=now - timedelta(hours=8) if reply else None, history=h))
+        stories += 1
+    print(f"  {c.name}: students wrote {comp} marks in their score books; {stories} queries (one with the teacher, one answered, one with the head).")
+
+
+def students_checking(db, school, term: Term, c: SchoolClass, rnd: random.Random) -> None:
+    """A class whose CA1 is published and CA2 fully approved a day ago: students are checking CA2, some queries open."""
+    from app.api.assessment import Scope, class_subjects, scheme_for
+    from app.api.checks import chain, get_step, snapshot
+    from app.models import ComponentRelease, User
+    now = datetime.now(timezone.utc)
+    names = [x["name"] for x in scheme_for(db, school.id, c.level)]
+    studs = list(db.scalars(select(Student).where(Student.class_id == c.id, Student.status == StudentStatus.active)))
+    for _, keys in class_subjects(db, c, studs):
+        for k in keys:
+            sc = Scope(db, k)
+            ch = chain(db, school, sc.subject, sc.teacher_id)
+            checker = db.get(User, ch[0]).full_name if ch else "The principal"
+            teacher = db.get(User, sc.teacher_id).full_name if sc.teacher_id else "The teacher"
+            for comp, ago in zip(names[:2], (12, 1)):
+                st = get_step(db, term.id, k, comp, make=True)
+                if st.history:
+                    continue
+                st.status, st.approved_at = "approved", now - timedelta(days=ago)
+                st.history = [{"at": (now - timedelta(days=ago + 1)).isoformat(), "by": teacher, "action": "Handed in", "note": None},
+                              {"at": (now - timedelta(days=ago)).isoformat(), "by": checker, "action": "Approved", "note": None}]
+    db.flush()
+    if not db.scalar(select(ComponentRelease.id).where(ComponentRelease.term_id == term.id, ComponentRelease.class_id == c.id, ComponentRelease.component == names[0])):
+        snap, _ = snapshot(db, c, term, names[0])
+        db.add(ComponentRelease(term_id=term.id, class_id=c.id, component=names[0], locked=True, published_at=now - timedelta(days=8), snapshot=snap, history=[]))
+    print(f"  {c.name}: {names[0]} published; {names[1]} approved yesterday for every subject, so students are checking it now.")
+    db.flush()
+    student_checks(db, school, term, c, names[1], rnd)
 
 
 def report_cards(db, c: SchoolClass, term: Term, studs: list[Student], rnd: random.Random) -> int:
@@ -243,16 +339,24 @@ def results(school_part: str | None = None, class_name: str | None = None) -> No
         return
     studs = fill(db, c, term, school.id, True, rnd)
     other = next((x for x in classes if x.level == c.level and x.id != c.id and size(x) and has_subjects(x)), None)
+    third = next((x for x in classes if x.level == c.level and x.id not in (c.id, other.id if other else None) and size(x) and has_subjects(x)), None)
+    if third:
+        fill(db, third, term, school.id, False, rnd, only=2)
     if other:
         fill(db, other, term, school.id, False, rnd)
     db.flush()
     checks_and_padlocks(db, school, term, c, other, rnd)
+    if third:
+        db.flush()
+        students_checking(db, school, term, third, rnd)
     db.flush()
     n = report_cards(db, c, term, studs, rnd)
     h = homework(db, c, term, studs, rnd)
     db.commit()
     print(f"  {c.name}: {n} report cards written and published, {h} pieces of homework set.")
-    print(f"\nTry it: Scores and results page of {school.name}; open {c.name}" + (f" and {other.name}" if other else "") + ".")
+    print(f"\nTry it: Scores and results page of {school.name}; open {c.name}" + (f", {other.name}" if other else "") + (f" and {third.name}" if third else "") + ".")
+    if third:
+        print(f"Log in as a {third.name} student to check CA2 marks against their score book (My scores tab).")
     print(f"Log in as a {c.name} student or parent to see Homework and Results.")
 
 
