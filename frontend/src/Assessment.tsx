@@ -10,6 +10,7 @@ import { href } from "./router";
 import { PrintSheet, Qr } from "./Scanner";
 import { Avatar, Field, Glyph, hue, Modal, Stat } from "./ui";
 import { ControlRoom, FamilyScores } from "./ScoreControl";
+import { SchoolAnalysis } from "./Analysis";
 
 // ---------- Types and calls ----------
 
@@ -879,12 +880,13 @@ export function ResultsList({ studentId, self }: { studentId: string; self: bool
 // ---------- School-wide overview ----------
 
 export function ResultsOverview({ schoolId }: { schoolId: string }) {
-  const [view, setView] = useState<"tests" | "cards">("tests");
+  const [view, setView] = useState<"tests" | "cards" | "analysis">("tests");
   return (
     <section className="stack">
       <div className="segmented"><button className={view === "tests" ? "on" : ""} onClick={() => setView("tests")}><Icon name="send" size={15} />Tests and publishing</button>
-        <button className={view === "cards" ? "on" : ""} onClick={() => setView("cards")}><Icon name="award" size={15} />Report cards</button></div>
-      {view === "tests" ? <ControlRoom schoolId={schoolId} /> : <CardsOverview schoolId={schoolId} />}
+        <button className={view === "cards" ? "on" : ""} onClick={() => setView("cards")}><Icon name="award" size={15} />Report cards</button>
+        <button className={view === "analysis" ? "on" : ""} onClick={() => setView("analysis")}><Icon name="trending" size={15} />Analysis</button></div>
+      {view === "tests" ? <ControlRoom schoolId={schoolId} /> : view === "cards" ? <CardsOverview schoolId={schoolId} /> : <SchoolAnalysis schoolId={schoolId} />}
     </section>
   );
 }

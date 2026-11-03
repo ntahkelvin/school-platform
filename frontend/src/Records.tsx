@@ -6,6 +6,7 @@ import { useBusy } from "./GrowthBits";
 import Icon from "./Icon";
 import { subjectLook } from "./look";
 import { gradeHue } from "./Assessment";
+import { StudentInsights } from "./Analysis";
 import { Avatar, Field, Glyph, hue, Modal } from "./ui";
 
 interface TermSum { days: number; attendance: number | null; absent: number; points: number; books: number; borrowed: number; awards: string[] }
@@ -67,6 +68,8 @@ export default function RecordPage({ studentId, who }: { studentId: string; who:
           {r.student.admitted_on && <li><Icon name="calendar-check" size={15} /><span>Joined<b>{nice(r.student.admitted_on)}</b></span></li>}
         </ul>
       </section>
+
+      <StudentInsights studentId={studentId} family={who !== "staff"} title={me ? "How I'm doing" : `How ${r.student.first_name} is doing`} />
 
       <section className="card editor">
         <h3 className="with-glyph"><Glyph icon="presentation" hue="fuchsia" size={30} />{me ? "My subjects and teachers" : "Subjects and teachers"}</h3>

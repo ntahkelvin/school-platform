@@ -44,10 +44,16 @@ def term_now(db, school) -> Term:
     return pick
 
 
-def fill(db, c: SchoolClass, term: Term, school_id, full: bool, rnd: random.Random, only: int | None = None) -> list[Student]:
+def skill(student_id, subject_id, step: int) -> float:
+    """A student's steady ability in a subject (so marks are believable across terms), drifting a little each term."""
+    base = random.Random(str(student_id)).gauss(63, 10)
+    drift = random.Random(str(student_id) + "d").gauss(0, 2.6)
+    return base + drift * step + random.Random(f"{student_id}{subject_id}").gauss(0, 7)
+
+
+def fill(db, c: SchoolClass, term: Term, school_id, full: bool, rnd: random.Random, only: int | None = None, step: int = 3, quiet: bool = False) -> list[Student]:
     from app.api.assessment import Scope, columns_of, scheme_for
     studs = list(db.scalars(select(Student).where(Student.class_id == c.id, Student.status == StudentStatus.active)))
-    ability = {s.id: rnd.gauss(62, 13) for s in studs}
     scheme = scheme_for(db, school_id, c.level)
     names = [x["name"] for x in scheme]
     cols = columns_of(scheme)
@@ -60,16 +66,19 @@ def fill(db, c: SchoolClass, term: Term, school_id, full: bool, rnd: random.Rand
         have = {(r.student_id, r.component) for r in db.scalars(select(Score).where(Score.term_id == term.id, Score.subject_id == cs.subject_id,
                                                                                     Score.student_id.in_([s.id for s in members])))}
         bias = rnd.gauss(0, 6)
+        generous = random.Random(str(cs.teacher_user_id)).random() < .12      # a few teachers mark CA far more kindly than the exam
         fill_comps = names[:only] if only else names if full else names[:1] + (names[1:2] if i % 3 != 2 else [])
         for s in members:
             for col in [x for x in cols if x["key"].split(" › ")[0] in fill_comps]:
                 if (s.id, col["key"]) in have:
                     continue
-                pct = max(8, min(99, ability.get(s.id, 60) + bias + rnd.gauss(0, 9))) / 100
+                kind = 12 if generous and "exam" not in col["key"].lower() else 0
+                pct = max(8, min(99, skill(s.id, cs.subject_id, step) + bias / 2 + kind + rnd.gauss(0, 6))) / 100
                 db.add(Score(term_id=term.id, student_id=s.id, subject_id=cs.subject_id, component=col["key"], value=round(col["max"] * pct * 2) / 2, by_id=cs.teacher_user_id))
                 added += 1
     db.flush()
-    print(f"  {c.name}: {added} marks added ({' and '.join(names[:only]) + ' for every subject' if only else 'every CA and exam' if full else 'CA1 for every subject and CA2 for two in three'}).")
+    if not quiet:
+        print(f"  {c.name}: {added} marks added ({' and '.join(names[:only]) + ' for every subject' if only else 'every CA and exam' if full else 'CA1 for every subject and CA2 for two in three'}).")
     return studs
 
 
@@ -243,6 +252,69 @@ def students_checking(db, school, term: Term, c: SchoolClass, rnd: random.Random
     student_checks(db, school, term, c, names[1], rnd)
 
 
+def approve_all(db, school, term: Term, c: SchoolClass, names: list[str], when: datetime, publish: bool) -> None:
+    """Every test named, on every sheet of the class: handed in, approved (and published to families)."""
+    from app.api.assessment import class_subjects
+    from app.api.checks import get_step, snapshot
+    from app.models import ComponentRelease
+    studs = list(db.scalars(select(Student).where(Student.class_id == c.id, Student.status == StudentStatus.active)))
+    for _, keys in class_subjects(db, c, studs):
+        for k in keys:
+            for comp in names:
+                st = get_step(db, term.id, k, comp, make=True)
+                if st.history:
+                    continue
+                st.status, st.approved_at = "approved", when
+                st.history = [{"at": when.isoformat(), "by": "Sample data", "action": "Approved", "note": None}]
+    db.flush()
+    if publish:
+        for comp in names:
+            if not db.scalar(select(ComponentRelease.id).where(ComponentRelease.term_id == term.id, ComponentRelease.class_id == c.id, ComponentRelease.component == comp)):
+                snap, _ = snapshot(db, c, term, comp)
+                db.add(ComponentRelease(term_id=term.id, class_id=c.id, component=comp, locked=True, published_at=when, snapshot=snap, history=[]))
+        db.flush()
+
+
+def history(db, school, term: Term, classes: list[SchoolClass], rnd: random.Random) -> None:
+    """Last session's three terms for these classes (all tests approved and published), so trends have something to show."""
+    from app.api.assessment import scheme_for
+    y = int(term.session.name[:4]) - 1
+    name = f"{y}/{y + 1}"
+    ses = db.scalar(select(AcademicSession).where(AcademicSession.school_id == school.id, AcademicSession.name == name))
+    if not ses:
+        dates = [(date(y, 9, 15), date(y, 12, 12)), (date(y + 1, 1, 12), date(y + 1, 4, 3)), (date(y + 1, 4, 27), date(y + 1, 7, 24))]
+        ses = AcademicSession(school_id=school.id, name=name, terms=[Term(number=n + 1, name=["First term", "Second term", "Third term"][n], starts_on=a, ends_on=z)
+                                                                     for n, (a, z) in enumerate(dates)])
+        db.add(ses)
+        db.flush()
+    for i, t in enumerate(sorted(ses.terms, key=lambda t: t.number)):
+        when = datetime.combine(t.ends_on or date(y + 1, 7, 1), datetime.min.time(), tzinfo=timezone.utc)
+        for c in classes:
+            names = [x["name"] for x in scheme_for(db, school.id, c.level)]
+            fill(db, c, t, school.id, True, rnd, step=i, quiet=True)
+            approve_all(db, school, t, c, names, when, True)
+    print(f"  {name}: three terms of marks for {', '.join(c.name for c in classes)} (approved and published), for trends.")
+
+
+def whole_school(db, school, term: Term, skip: set, rnd: random.Random) -> None:
+    """CA1 approved in every other class (and every test in SS 3), so the school-wide view is full."""
+    from app.api.academics import _level_order
+    from app.api.assessment import scheme_for
+    classes = sorted(db.scalars(select(SchoolClass).join(Branch, Branch.id == SchoolClass.branch_id).where(Branch.school_id == school.id)), key=lambda c: (_level_order(c.level), c.name))
+    n = 0
+    fresh = next((c for c in classes if c.id not in skip), None)       # one class left empty, to try typing a fresh sheet
+    for c in classes:
+        if c.id in skip or (fresh and c.id == fresh.id) or not db.scalar(select(Student.id).where(Student.class_id == c.id, Student.status == StudentStatus.active).limit(1)):
+            continue
+        names = [x["name"] for x in scheme_for(db, school.id, c.level)]
+        final = c.level.upper().startswith("SS 3")
+        use = names if final else names[:1]
+        fill(db, c, term, school.id, final, rnd, only=None if final else 1, quiet=True)
+        approve_all(db, school, term, c, use, datetime.now(timezone.utc) - timedelta(days=20), False)
+        n += 1
+    print(f"  {n} other classes: CA1 approved (SS 3: every test), so the analysis covers the whole school. {fresh.name if fresh else ''} is left empty to try typing.")
+
+
 def report_cards(db, c: SchoolClass, term: Term, studs: list[Student], rnd: random.Random) -> int:
     from app.api.assessment import TRAITS, card_data, compute_class, family_of, suggest_comment
     d = compute_class(db, c, term)
@@ -349,6 +421,9 @@ def results(school_part: str | None = None, class_name: str | None = None) -> No
     if third:
         db.flush()
         students_checking(db, school, term, third, rnd)
+    db.flush()
+    history(db, school, term, [x for x in (c, other, third) if x], rnd)
+    whole_school(db, school, term, {x.id for x in (c, other, third) if x}, rnd)
     db.flush()
     n = report_cards(db, c, term, studs, rnd)
     h = homework(db, c, term, studs, rnd)
