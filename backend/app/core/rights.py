@@ -41,6 +41,7 @@ PRIVATE: dict[str, dict] = {
     "staff_pay": {"label": "Staff pay and bank details", "icon": "coins", "hint": "Grade level, salary step and bank account of each staff member"},
 }
 POWERS: dict[str, dict] = {
+    "publish_results": {"label": "Publish results", "icon": "send", "hint": "Set score deadlines, open closed tests again, publish scores and report cards to families, and take the padlock off published tests."},
     "see_as": {"label": "See as someone else", "icon": "eye", "hint": "Look at the platform the way another person sees it, to help them. Read-only."},
 }
 
@@ -79,10 +80,10 @@ DEFAULTS: dict[str, set[str]] = {
     "head": (ALL - {"rights.change"}),
     "vice_principal": _see(*[a for a in AREA_KEYS if a not in ("imports", "logins", "rights")])
         | _both("students", "attendance", "classes", "teaching", "results", "staff_day", "growth", "operations", "library")
-        | {"private.safeguarding"},
+        | {"private.safeguarding", "power.publish_results"},
     "it_admin": _see(*[a for a in AREA_KEYS if a != "imports"])
         | _both("school", "students", "classes", "teaching", "staff", "staff_day", "operations", "facilities", "setup", "imports", "logins", "library")
-        | {"power.see_as"},
+        | {"power.see_as", "power.publish_results"},
     "bursar": _see("school", "students", "staff", "facilities") | {"private.staff_pay"},
     "house_parent": set(),
     "teacher": set(),
@@ -128,6 +129,7 @@ ROUTE_AREAS: list[tuple[str, str, str]] = [
     ("records", r"", "students"),
     ("teaching", r"", "teaching"),
     ("assessment", r"", "results"),
+    ("checks", r"", "results"),
     ("units", r"", "setup"),
     ("boards", r"", "school"),
     ("rights", r"", "rights"),

@@ -16,6 +16,7 @@ import { LeaveWaitingCard, MyDayCard, MyDutiesCard, MyLeaveCard, MyNotesCard, To
 import { Avatar, Empty, Field, Glyph, hue, Modal, Stat } from "./ui";
 import { MyLessonsCard } from "./Timetable";
 import { MarkingCard } from "./Assessment";
+import { ToCheckCard } from "./ScoreControl";
 import { ClubRequestsCard } from "./StudentPortal";
 
 interface Today { total: number; marked: number; present: number; absent: number }
@@ -214,6 +215,7 @@ function SchoolPortal({ s, me, reload }: { s: SchoolHome; me: Me; reload: () => 
 
       <MyDayCard schoolId={s.school_id} />
       {s.teaching && <MyLessonsCard schoolId={s.school_id} />}
+      <ToCheckCard />
       {s.teaching && <MarkingCard />}
       <ClubRequestsCard schoolId={s.school_id} />
 

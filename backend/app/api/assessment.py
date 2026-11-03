@@ -194,9 +194,18 @@ class Scope:
         return f"{self.subject.name} · {self.name}"
 
     def can_see(self, user: User) -> bool:
-        if self.teacher_id == user.id or rights.has(user, self.school, "results.see", self.db):
+        if self.teacher_id == user.id or rights.has(user, self.school, "results.see", self.db) or rights.has(user, self.school, "power.publish_results", self.db):
             return True
-        return bool(self.cls and self.cls.form_teacher_id == user.id)
+        if self.cls and self.cls.form_teacher_id == user.id:
+            return True
+        return user.id in self.heads()
+
+    def heads(self) -> set:
+        """The unit head and HOD of this subject: they check its marks."""
+        from app.models import Department, Unit
+        unit = self.db.get(Unit, self.subject.unit_id) if self.subject.unit_id else None
+        dept = self.db.get(Department, self.subject.department_id or (unit.department_id if unit else None)) if (self.subject.department_id or unit) else None
+        return {x for x in (unit.head_user_id if unit else None, dept.head_user_id if dept else None) if x}
 
     def is_teacher(self, user: User) -> bool:
         return self.teacher_id == user.id and not rights.acting(user)
@@ -242,7 +251,27 @@ def totals_for(scheme: list[dict], marks: dict) -> tuple[float | None, dict]:
     return (round(sum(v or 0 for v in comp.values()), 1) if any_mark else None), comp
 
 
-def sheet(db: Session, sc: Scope, term: Term, user: User) -> dict:
+def peer_averages(db: Session, sc: Scope, term: Term, comp: str, cols: list[dict]) -> list[dict]:
+    """The same test in the other arms of the level (to compare a class with its neighbours)."""
+    from app.api.checks import comp_of
+    if sc.kind != "class":
+        return []
+    keys = [c["key"] for c in cols if comp_of(c["key"]) == comp]
+    mx = sum(c["max"] for c in cols if comp_of(c["key"]) == comp)
+    out = []
+    for c in db.scalars(select(SchoolClass).join(ClassSubject, ClassSubject.class_id == SchoolClass.id).where(
+            SchoolClass.branch_id == sc.cls.branch_id, SchoolClass.level == sc.cls.level, SchoolClass.id != sc.cls.id, ClassSubject.subject_id == sc.subject.id)):
+        tot: dict = defaultdict(float)
+        for r in db.scalars(select(Score).join(Student, Student.id == Score.student_id).where(Student.class_id == c.id, Score.term_id == term.id,
+                                                                                              Score.subject_id == sc.subject.id, Score.component.in_(keys), Score.value.is_not(None))):
+            tot[r.student_id] += r.value
+        if len(tot) >= 3 and mx:
+            out.append({"name": c.name, "average": 100 * sum(tot.values()) / len(tot) / mx})
+    return out
+
+
+def sheet(db: Session, sc: Scope, term: Term, user: User, check: bool = False) -> dict:
+    from app.api.checks import authority, releases, sheet_steps, warnings
     scheme = scheme_for(db, sc.school.id, sc.level)
     cols = columns_of(scheme)
     bands = bands_for(db, sc.school.id, sc.level)
@@ -254,16 +283,19 @@ def sheet(db: Session, sc: Scope, term: Term, user: User) -> dict:
         marks[r.student_id][r.component] = r.value
         if r.absent:
             absent[r.student_id][r.component] = True
-    st = sheet_status(db, term, sc.key)
+    steps = sheet_steps(db, sc, term, user, scheme, {s.id: s.class_id for s in studs})
+    rel = releases(db, term.id)
     rows, totals = [], {}
     for s in studs:
         total, comp = totals_for(scheme, marks[s.id])
         totals[s.id] = total
-        g, remark = grade_of(total, bands)
+        # A grade only means something once every test is in (CA1 alone would read as F9).
+        g, remark = grade_of(total, bands) if all(v is not None or any(k.startswith(n) for k in absent[s.id]) for n, v in comp.items()) else (None, None)
         filled = sum(1 for c in cols if marks[s.id].get(c["key"]) is not None or absent[s.id].get(c["key"]))
         rows.append({"id": str(s.id), "name": f"{s.last_name}, {s.first_name}", "first_name": s.first_name, "admission_no": s.admission_no, "thumb": s.photo_thumb,
                      "class_name": s.school_class.name if s.school_class else None,
-                     "marks": {k: v for k, v in marks[s.id].items()}, "absent": list(absent[s.id]), "components": comp, "total": total, "grade": g, "remark": remark, "filled": filled})
+                     "marks": {k: v for k, v in marks[s.id].items()}, "absent": list(absent[s.id]), "components": comp, "total": total, "grade": g, "remark": remark, "filled": filled,
+                     "locked": [c["name"] for c in scheme if (s.class_id, c["name"]) in rel and rel[(s.class_id, c["name"])].locked]})
     pos = rank({r["id"]: r["total"] for r in rows})
     for r in rows:
         r["position"] = pos.get(r["id"])
@@ -273,22 +305,21 @@ def sheet(db: Session, sc: Scope, term: Term, user: User) -> dict:
     for r in rows:
         if r["grade"]:
             gradecount[r["grade"]] += 1
-    submitted = st and st.status == "submitted"
     homework = [{"id": str(a.id), "title": a.title, "kind": a.kind, "max_score": a.max_score, "counts_to": a.counts_to,
                  "marked": db.scalar(select(func.count()).select_from(Submission).where(Submission.assignment_id == a.id, Submission.score.is_not(None))) or 0}
                 for a in db.scalars(assignments_query(sc, term).where(Assignment.max_score.is_not(None)).order_by(Assignment.set_on.desc()))]
     return {
         "scope": sc.key, "title": sc.title(), "subject": {"id": str(sc.subject.id), "name": sc.subject.name}, "group": sc.name, "level": sc.level,
-        "class_id": str(sc.cls.id) if sc.cls else None, "school_id": str(sc.school.id), "teacher": name_of(db, sc.teacher_id),
+        "class_id": str(sc.cls.id) if sc.cls else None, "school_id": str(sc.school.id), "teacher": name_of(db, sc.teacher_id), "teacher_id": str(sc.teacher_id) if sc.teacher_id else None,
         "term": term_out(term), "scheme": scheme, "columns": cols, "bands": [{"grade": g, "min": lo, "max": hi, "remark": rm} for g, lo, hi, rm in bands],
-        "students": rows, "status": st.status if st else "open", "status_note": st.note if st else None, "submitted_at": st.updated_at.isoformat() if submitted else None,
-        "submitted_by": name_of(db, st.by_id) if submitted else None,
-        "can_edit": (sc.is_teacher(user) and not submitted) or sc.manager(user), "can_reopen": bool(submitted and sc.manager(user)), "is_teacher": sc.teacher_id == user.id,
+        "students": rows, "steps": steps, "status": "approved" if all(x["status"] == "approved" for x in steps.values()) else "open",
+        "can_edit": any(x["can_type"] for x in steps.values()), "is_teacher": sc.teacher_id == user.id, "is_authority": authority(db, user, sc.school),
         "stats": {"average": round(sum(got) / len(got), 1) if got else None, "highest": max(got) if got else None, "lowest": min(got) if got else None,
                   "passed": sum(1 for x in got if x >= passmark), "scored": len(got), "students": len(rows), "complete": sum(1 for r in rows if r["filled"] == len(cols)),
                   "grades": dict(gradecount), "pass_mark": passmark},
         "homework": homework,
-    }
+    } | ({"checks": {c["name"]: {"warnings": warnings({"columns": cols, "students": rows, "scheme": scheme}, c["name"], peer_averages(db, sc, term, c["name"], cols))}
+                     for c in scheme}} if check else {})
 
 
 def open_scope(db: Session, user: User, key: str) -> Scope:
@@ -315,17 +346,24 @@ def my_sheets(term_id: uuid.UUID | None = None, user: User = Depends(current_use
         cols = columns_of(scheme_for(db, sc.school.id, sc.level))
         n = db.scalar(select(func.count()).select_from(Score).where(Score.term_id == t.id, Score.subject_id == sc.subject.id, Score.student_id.in_(studs),
                                                                     or_(Score.value.is_not(None), Score.absent.is_(True)))) or 0
-        st = sheet_status(db, t, key)
+        from app.api.checks import STATUS_LABEL, get_step, step_status, window_state
+        tests = []
+        for comp in [c["name"] for c in scheme_for(db, sc.school.id, sc.level)]:
+            stp = get_step(db, t.id, key, comp)
+            ws = window_state(db, t.id, comp, user.id)
+            tests.append({"name": comp, "status": step_status(stp), "label": STATUS_LABEL[step_status(stp)], "closes_at": ws["closes_at"], "closed": ws["closed"],
+                          "open_for_me": ws["open_for_me"]})
+        done = all(x["status"] == "approved" for x in tests)
         out.append({"scope": key, "subject": sc.subject.name, "group": sc.name, "level": sc.level, "students": len(studs), "progress": round(100 * n / (len(studs) * len(cols))),
-                    "status": st.status if st else "open", "term": t.name, "term_id": str(t.id), "school_id": str(sc.school.id)})
+                    "status": "submitted" if done else "open", "tests": tests, "term": t.name, "term_id": str(t.id), "school_id": str(sc.school.id)})
     out.sort(key=lambda x: (x["status"] == "submitted", x["level"] or "", x["group"], x["subject"]))
     return out
 
 
 @router.get("/score-sheets/{scope}")
-def get_sheet(scope: str, term_id: uuid.UUID | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def get_sheet(scope: str, term_id: uuid.UUID | None = None, check: bool = False, user: User = Depends(current_user), db: Session = Depends(get_db)):
     sc = open_scope(db, user, scope)
-    return sheet(db, sc, need_term(db, sc.school.id, term_id), user)
+    return sheet(db, sc, need_term(db, sc.school.id, term_id), user, check=check)
 
 
 class MarkIn(BaseModel):
@@ -367,66 +405,25 @@ def save_marks(db: Session, sc: Scope, term: Term, marks: list[MarkIn], user: Us
 
 @router.put("/score-sheets/{scope}")
 def put_marks(scope: str, data: MarksIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from app.api.checks import comp_of, releases, sheet_steps
     sc = open_scope(db, user, scope)
     term = need_term(db, sc.school.id, data.term_id)
-    st = sheet_status(db, term, sc.key)
-    if not (sc.manager(user) or (sc.is_teacher(user) and not (st and st.status == "submitted"))):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "This sheet has been handed in. Ask the principal to reopen it." if st and st.status == "submitted"
-                            else "Only the subject teacher can fill this sheet")
-    if db.scalar(select(ReportCard.id).join(Student, Student.id == ReportCard.student_id).where(ReportCard.term_id == term.id, ReportCard.status == "published",
-                                                                                            ReportCard.student_id.in_([m.student_id for m in data.marks] or [uuid.uuid4()]))):
+    studs = {s.id: s.class_id for s in sc.students()}
+    steps = sheet_steps(db, sc, term, user, scheme_for(db, sc.school.id, sc.level), studs)
+    rel = releases(db, term.id)
+    for m in data.marks:
+        st = steps.get(comp_of(m.key))
+        if not st:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"There is no column called {m.key}")
+        if not st["can_type"]:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, f"{comp_of(m.key)}: {st['why_not']}")
+        r = rel.get((studs.get(m.student_id), comp_of(m.key)))
+        if r and r.locked:
+            raise HTTPException(status.HTTP_409_CONFLICT, f"{comp_of(m.key)} is published and locked for this student's class. The principal, VP or ICT can open it.")
+    if db.scalar(select(ReportCard.id).where(ReportCard.term_id == term.id, ReportCard.status == "published",
+                                             ReportCard.student_id.in_([m.student_id for m in data.marks] or [uuid.uuid4()]))):
         raise HTTPException(status.HTTP_409_CONFLICT, "Report cards for some of these students are already published. Take them back first.")
     save_marks(db, sc, term, data.marks, user)
-    db.commit()
-    return sheet(db, sc, term, user)
-
-
-class SubmitIn(BaseModel):
-    term_id: uuid.UUID
-    even_if_missing: bool = False
-    note: str | None = Field(default=None, max_length=300)
-
-
-@router.post("/score-sheets/{scope}/submit")
-def submit_sheet(scope: str, data: SubmitIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    sc = open_scope(db, user, scope)
-    if not (sc.is_teacher(user) or sc.manager(user)):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the subject teacher can hand in this sheet")
-    term = need_term(db, sc.school.id, data.term_id)
-    sh = sheet(db, sc, term, user)
-    missing = sh["stats"]["students"] - sh["stats"]["complete"]
-    if missing and not data.even_if_missing:
-        raise HTTPException(status.HTTP_409_CONFLICT, f"{missing} student{'s' if missing != 1 else ''} still {'have' if missing != 1 else 'has'} empty marks")
-    st = sheet_status(db, term, sc.key) or SheetStatus(term_id=term.id, scope=sc.key)
-    st.status, st.by_id, st.note = "submitted", user.id, data.note
-    db.add(st)
-    who = set()
-    if sc.cls and sc.cls.form_teacher_id:
-        who.add(sc.cls.form_teacher_id)
-    elif sc.group:
-        who |= {c.form_teacher_id for c in db.scalars(select(SchoolClass).join(Student, Student.class_id == SchoolClass.id)
-                                                       .join(StudentElective, StudentElective.student_id == Student.id).where(StudentElective.group_id == sc.group.id))}
-    who.discard(user.id)
-    notify(db, who, sc.school.id, f"{name_of(db, user.id)} handed in the {sc.title()} scores for {term.name}.", f"#/results/{sc.cls.id}" if sc.cls else None, "circle-check")
-    db.commit()
-    return sheet(db, sc, term, user)
-
-
-class ReopenIn(BaseModel):
-    term_id: uuid.UUID
-    note: str | None = Field(default=None, max_length=300)
-
-
-@router.post("/score-sheets/{scope}/reopen")
-def reopen_sheet(scope: str, data: ReopenIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    sc = open_scope(db, user, scope)
-    if not sc.manager(user):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only someone who can change results can reopen a sheet")
-    term = need_term(db, sc.school.id, data.term_id)
-    st = sheet_status(db, term, sc.key)
-    if st:
-        st.status, st.note, st.by_id = "open", data.note, user.id
-    notify(db, [sc.teacher_id], sc.school.id, f"Your {sc.title()} score sheet is open again" + (f": “{data.note}”" if data.note else "."), f"#/sheet/{sc.key}", "refresh", "request")
     db.commit()
     return sheet(db, sc, term, user)
 
@@ -535,9 +532,11 @@ def get_assignment(aid: uuid.UUID, user: User = Depends(current_user), db: Sessi
     out = assignment_out(db, a, sc)
     cols = columns_of(scheme_for(db, sc.school.id, sc.level))
     term = db.get(Term, a.term_id) if a.term_id else None
-    st = sheet_status(db, term, sc.key) if term else None
-    out.update({"rows": rows, "can_edit": a.teacher_id == user.id or sc.is_teacher(user) or sc.manager(user), "columns": [c for c in cols if "exam" not in c["key"].lower()],
-                "sheet_open": bool(term) and not (st and st.status == "submitted")})
+    steps = sheet(db, sc, term, user)["steps"] if term else {}
+    from app.api.checks import comp_of
+    out.update({"rows": rows, "can_edit": a.teacher_id == user.id or sc.is_teacher(user) or sc.manager(user),
+                "columns": [c for c in cols if "exam" not in c["key"].lower() and steps.get(comp_of(c["key"]), {}).get("can_type")],
+                "sheet_open": any(x["can_type"] for x in steps.values())})
     return out
 
 
@@ -616,9 +615,10 @@ def to_sheet(aid: uuid.UUID, data: ToSheetIn, user: User = Depends(current_user)
     cols = {c["key"]: c for c in columns_of(scheme_for(db, sc.school.id, sc.level))}
     if data.key not in cols:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Choose a column")
-    st = sheet_status(db, term, sc.key)
-    if st and st.status == "submitted" and not sc.manager(user):
-        raise HTTPException(status.HTTP_409_CONFLICT, "The score sheet has been handed in")
+    from app.api.checks import comp_of
+    stp = sheet(db, sc, term, user)["steps"][comp_of(data.key)]
+    if not stp["can_type"]:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"{comp_of(data.key)}: {stp['why_not']}")
     mx = cols[data.key]["max"]
     marks = [MarkIn(student_id=x.student_id, key=data.key, value=round(x.score * mx / a.max_score, 1))
              for x in db.scalars(select(Submission).where(Submission.assignment_id == a.id, Submission.score.is_not(None)))]
@@ -713,6 +713,12 @@ def class_subjects(db: Session, c: SchoolClass, studs: list[Student]) -> list[tu
     return sorted(((sub, sorted(keys)) for sub, keys in subs.values()), key=lambda x: x[0].name)
 
 
+def scope_statuses(db: Session, term: Term, keys: list[str], comps: list[str]) -> dict:
+    """"submitted" for a sheet whose every test is approved (the word the broadsheet has always used), else "open"."""
+    from app.api.checks import get_step, step_status
+    return {k: "submitted" if all(step_status(get_step(db, term.id, k, c)) == "approved" for c in comps) else "open" for k in keys}
+
+
 def compute_class(db: Session, c: SchoolClass, term: Term) -> dict:
     """Every number on the broadsheet and on each report card for one class and term."""
     school = school_of_class(db, c)
@@ -754,7 +760,7 @@ def compute_class(db: Session, c: SchoolClass, term: Term) -> dict:
         summary[s.id] = {"total": round(sum(got), 1) if got else None, "average": round(sum(got) / len(got), 1) if got else None, "subjects": len(got), "taking": len(per[s.id])}
     pos = rank({s.id: summary[s.id]["average"] for s in studs})
     avgs = [x["average"] for x in summary.values() if x["average"] is not None]
-    statuses = {st.scope: st.status for st in db.scalars(select(SheetStatus).where(SheetStatus.term_id == term.id))}
+    statuses = scope_statuses(db, term, [k for _, ks in subjects for k in ks], [x["name"] for x in scheme])
     return {"school": school, "scheme": scheme, "bands": bands, "students": studs, "subjects": subjects, "per": per, "sub_stats": sub_stats, "sub_pos": sub_pos,
             "summary": summary, "position": pos, "statuses": statuses,
             "class_stats": {"average": round(sum(avgs) / len(avgs), 1) if avgs else None, "highest": max(avgs) if avgs else None, "lowest": min(avgs) if avgs else None, "size": len(studs)}}
@@ -798,6 +804,7 @@ def broadsheet(class_id: uuid.UUID, term_id: uuid.UUID | None = None, user: User
     ready = sum(1 for x in subjects if x["status"] == "submitted")
     return {"class": {"id": str(c.id), "name": c.name, "level": c.level, "form_teacher": name_of(db, c.form_teacher_id)}, "school": {"id": str(school.id), "name": school.name},
             "term": term_out(term), "subjects": subjects, "students": rows, "stats": d["class_stats"], "sheets_in": ready, "can_manage": manage,
+            "can_publish": __import__("app.api.checks", fromlist=["authority"]).authority(db, user, school),
             "is_form_teacher": c.form_teacher_id == user.id, "published": sum(1 for r in rows if r["card"] and r["card"]["status"] == "published"),
             "traits": TRAITS, "bands": [{"grade": g, "min": lo, "max": hi, "remark": rm} for g, lo, hi, rm in d["bands"]]}
 
@@ -886,6 +893,7 @@ def staff_card(student_id: uuid.UUID, term_id: uuid.UUID | None = None, user: Us
     data = rc.snapshot if rc and rc.status == "published" and rc.snapshot else card_data(db, s, term, compute_class(db, c, term), rc)
     return {"card": data, "class_id": str(c.id), "status": rc.status if rc else "draft", "code": rc.code if rc and rc.status == "published" else None,
             "published_at": rc.published_at.isoformat() if rc and rc.published_at else None, "can_manage": manage,
+            "can_publish": __import__("app.api.checks", fromlist=["authority"]).authority(db, user, school),
             "can_comment": (c.form_teacher_id == user.id and not rights.acting(user)) or manage, "seen": bool(rc and rc.seen_at)}
 
 
@@ -988,8 +996,9 @@ def publish(class_id: uuid.UUID, data: PublishIn, user: User = Depends(current_u
     if not c:
         raise not_found("Class")
     school, _, manage = class_access(db, user, c)
-    if not manage:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only someone who can change results can publish report cards")
+    from app.api.checks import authority
+    if not authority(db, user, school):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the principal, VP or ICT (anyone with the Publish results power) can publish report cards")
     term = need_term(db, school.id, data.term_id)
     d = compute_class(db, c, term)
     want = set(data.student_ids or [s.id for s in d["students"]])
@@ -1022,8 +1031,9 @@ def unpublish(class_id: uuid.UUID, data: PublishIn, user: User = Depends(current
     if not c:
         raise not_found("Class")
     school, _, manage = class_access(db, user, c)
-    if not manage:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only someone who can change results can do this")
+    from app.api.checks import authority
+    if not authority(db, user, school):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the principal, VP or ICT (anyone with the Publish results power) can do this")
     term = need_term(db, school.id, data.term_id)
     q = select(ReportCard).where(ReportCard.term_id == term.id, ReportCard.class_id == c.id, ReportCard.status == "published")
     if data.student_ids:
@@ -1088,7 +1098,6 @@ def results_overview(school_id: uuid.UUID, term_id: uuid.UUID | None = None, use
         raise not_found("School")
     term = need_term(db, school.id, term_id)
     from app.api.academics import _level_order
-    statuses = {st.scope: st.status for st in db.scalars(select(SheetStatus).where(SheetStatus.term_id == term.id))}
     out = []
     classes = sorted(db.scalars(select(SchoolClass).join(Branch, Branch.id == SchoolClass.branch_id).where(Branch.school_id == school_id)), key=lambda c: (_level_order(c.level), c.name))
     for c in classes:
@@ -1096,6 +1105,7 @@ def results_overview(school_id: uuid.UUID, term_id: uuid.UUID | None = None, use
         if not n:
             continue
         subs = class_subjects(db, c, list(db.scalars(select(Student).where(Student.class_id == c.id, Student.status == StudentStatus.active))))
+        statuses = scope_statuses(db, term, [k for _, ks in subs for k in ks], [x["name"] for x in scheme_for(db, school.id, c.level)])
         done = sum(1 for _, keys in subs if keys and all(statuses.get(k) == "submitted" for k in keys))
         late = [s.name for s, keys in subs if not all(statuses.get(k) == "submitted" for k in keys)]
         pub = db.scalar(select(func.count()).select_from(ReportCard).where(ReportCard.term_id == term.id, ReportCard.class_id == c.id, ReportCard.status == "published")) or 0

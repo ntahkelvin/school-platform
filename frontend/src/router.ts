@@ -14,6 +14,7 @@ export type Route =
   | { page: "sheet"; scope: string }
   | { page: "results"; id: string }
   | { page: "verify"; code: string }
+  | { page: "check" }
   | { page: "org"; id: string }
   | { page: "board" }
   | { page: "staff" }
@@ -49,6 +50,7 @@ export function parse(hash: string): Route {
   if (parts[0] === "sheet" && parts[1]) return { page: "sheet", scope: decodeURIComponent(parts[1]) };
   if (parts[0] === "results" && parts[1]) return { page: "results", id: parts[1] };
   if (parts[0] === "verify" && parts[1]) return { page: "verify", code: parts[1] };
+  if (parts[0] === "check") return { page: "check" };
   if (parts[0] === "org" && parts[1]) return { page: "org", id: parts[1] };
   if (parts[0] === "board") return { page: "board" };
   if (parts[0] === "staff") return { page: "staff" };
@@ -89,6 +91,8 @@ export function href(route: Route): string {
       return `#/results/${route.id}`;
     case "verify":
       return `#/verify/${route.code}`;
+    case "check":
+      return "#/check";
     case "org":
       return `#/org/${route.id}`;
     case "board":

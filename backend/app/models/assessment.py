@@ -88,3 +88,67 @@ class ReportCard(IdMixin, TimestampMixin, Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     published_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))   # first opened by the family
+
+
+class ResultSettings(IdMixin, TimestampMixin, Base):
+    """How a school checks and releases scores."""
+    __tablename__ = "result_settings"
+
+    school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"), unique=True)
+    checks: Mapped[int] = mapped_column(Integer, default=1)                     # 1: unit head (or HOD if none). 2: unit head, then HOD
+    confirm_days: Mapped[int] = mapped_column(Integer, default=5)               # school days students have to confirm or query
+
+
+class AssessmentWindow(IdMixin, TimestampMixin, Base):
+    """The deadline for typing one test's marks (CA1, CA2, Exam) in one term. After it, the sheet closes by itself."""
+    __tablename__ = "assessment_windows"
+    __table_args__ = (UniqueConstraint("term_id", "component", name="uq_assessment_window"),)
+
+    school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"), index=True)
+    term_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("terms.id", ondelete="CASCADE"), index=True)
+    component: Mapped[str] = mapped_column(String(50))
+    closes_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class WindowOpening(IdMixin, TimestampMixin, Base):
+    """The principal, VP or ICT opening a closed test again, for one teacher or for everyone, until a set time."""
+    __tablename__ = "window_openings"
+
+    school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"), index=True)
+    term_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("terms.id", ondelete="CASCADE"), index=True)
+    component: Mapped[str] = mapped_column(String(50))
+    teacher_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))   # empty: every teacher
+    until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str | None] = mapped_column(String(300))
+    by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class SheetStep(IdMixin, TimestampMixin, Base):
+    """Where one test on one score sheet has got to: typing, handed in, with the unit head or HOD, sent back or approved."""
+    __tablename__ = "sheet_steps"
+    __table_args__ = (UniqueConstraint("term_id", "scope", "component", name="uq_sheet_step"),)
+
+    term_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("terms.id", ondelete="CASCADE"), index=True)
+    scope: Mapped[str] = mapped_column(String(120), index=True)
+    component: Mapped[str] = mapped_column(String(50))
+    status: Mapped[str] = mapped_column(String(10), default="draft")           # draft, submitted, returned, approved
+    stage: Mapped[int] = mapped_column(Integer, default=0)                      # which check it is waiting for (0 first, 1 second)
+    waiting_for_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    row_notes: Mapped[dict] = mapped_column(JSON, default=dict)                 # {student id: what to fix} when sent back
+    history: Mapped[list] = mapped_column(JSON, default=list)                   # [{at, by, action, note}]
+
+
+class ComponentRelease(IdMixin, TimestampMixin, Base):
+    """One test's scores published to families for one class. Published tests carry a padlock until someone opens them again."""
+    __tablename__ = "component_releases"
+    __table_args__ = (UniqueConstraint("term_id", "class_id", "component", name="uq_component_release"),)
+
+    term_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("terms.id", ondelete="CASCADE"), index=True)
+    class_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("classes.id", ondelete="CASCADE"), index=True)
+    component: Mapped[str] = mapped_column(String(50))
+    locked: Mapped[bool] = mapped_column(Boolean, default=True)
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)                  # {student id: {subject: {"marks": {...}, "total": n}}} as families see it
+    history: Mapped[list] = mapped_column(JSON, default=list)

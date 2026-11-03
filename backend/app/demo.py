@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 
 from app.core.db import SessionLocal
 from app.models import (
-    AcademicSession, Assignment, Branch, ClassSubject, Notice, ReportCard, School, SchoolClass, Score, SheetStatus, Student, Subject, Submission, Term,
+    AcademicSession, Assignment, Branch, ClassSubject, Notice, ReportCard, School, SchoolClass, Score, Student, Subject, Submission, Term,
 )
 from app.models.people import StudentStatus
 
@@ -48,7 +48,9 @@ def fill(db, c: SchoolClass, term: Term, school_id, full: bool, rnd: random.Rand
     from app.api.assessment import Scope, columns_of, scheme_for
     studs = list(db.scalars(select(Student).where(Student.class_id == c.id, Student.status == StudentStatus.active)))
     ability = {s.id: rnd.gauss(62, 13) for s in studs}
-    cols = columns_of(scheme_for(db, school_id, c.level))
+    scheme = scheme_for(db, school_id, c.level)
+    names = [x["name"] for x in scheme]
+    cols = columns_of(scheme)
     added = 0
     for i, cs in enumerate(db.scalars(select(ClassSubject).where(ClassSubject.class_id == c.id))):
         sc = Scope(db, f"class:{c.id}:{cs.subject_id}")
@@ -58,19 +60,91 @@ def fill(db, c: SchoolClass, term: Term, school_id, full: bool, rnd: random.Rand
         have = {(r.student_id, r.component) for r in db.scalars(select(Score).where(Score.term_id == term.id, Score.subject_id == cs.subject_id,
                                                                                     Score.student_id.in_([s.id for s in members])))}
         bias = rnd.gauss(0, 6)
-        upto = len(cols) if full else (0 if i % 4 == 0 else 1 if i % 3 else 2)
+        fill_comps = names if full else names[:1] + (names[1:2] if i % 2 == 0 else [])
         for s in members:
-            for col in cols[:upto]:
+            for col in [x for x in cols if x["key"].split(" › ")[0] in fill_comps]:
                 if (s.id, col["key"]) in have:
                     continue
                 pct = max(8, min(99, ability.get(s.id, 60) + bias + rnd.gauss(0, 9))) / 100
                 db.add(Score(term_id=term.id, student_id=s.id, subject_id=cs.subject_id, component=col["key"], value=round(col["max"] * pct * 2) / 2, by_id=cs.teacher_user_id))
                 added += 1
-        if full and not db.scalar(select(SheetStatus.id).where(SheetStatus.term_id == term.id, SheetStatus.scope == sc.key)):
-            db.add(SheetStatus(term_id=term.id, scope=sc.key, status="submitted", by_id=cs.teacher_user_id))
     db.flush()
-    print(f"  {c.name}: {added} marks added ({'every CA and exam, handed in' if full else 'about half the sheet, not handed in'}).")
+    print(f"  {c.name}: {added} marks added ({'every CA and exam, handed in' if full else 'CA1 for every subject and CA2 for half of them'}).")
     return studs
+
+
+def checks_and_padlocks(db, school, term: Term, full_class: SchoolClass, half_class: SchoolClass | None, rnd: random.Random) -> None:
+    """Deadlines, a teacher given extra time, and every test somewhere on its way: typing, with a head, sent back, approved, published and locked."""
+    from app.api.assessment import Scope, class_subjects, scheme_for
+    from app.api.checks import chain, get_step, log, snapshot
+    from app.models import AssessmentWindow, ComponentRelease, ResultSettings, SheetStep, User, WindowOpening
+    now = datetime.now(timezone.utc)
+    names = [x["name"] for x in scheme_for(db, school.id, full_class.level)]
+    if not db.scalar(select(ResultSettings).where(ResultSettings.school_id == school.id)):
+        db.add(ResultSettings(school_id=school.id, checks=1, confirm_days=5))
+    closes = {0: now - timedelta(days=10), 1: now + timedelta(days=3), 2: now + timedelta(days=35)}
+    for i, comp in enumerate(names):
+        if not db.scalar(select(AssessmentWindow).where(AssessmentWindow.term_id == term.id, AssessmentWindow.component == comp)):
+            db.add(AssessmentWindow(school_id=school.id, term_id=term.id, component=comp, closes_at=closes.get(i, now + timedelta(days=35))))
+
+    def mark(st, sc, action, by_id, note=None, days=0):
+        u = db.get(User, by_id) if by_id else None
+        st.history = [*(st.history or []), {"at": (now - timedelta(days=days)).isoformat(), "by": u.full_name if u else "The principal", "action": action, "note": note}]
+
+    def step(key, comp, state, days=8):
+        st = get_step(db, term.id, key, comp, make=True)
+        if st.history:                      # already on its way (the command was run before)
+            return st
+        sc = Scope(db, key)
+        ch = chain(db, school, sc.subject, sc.teacher_id)
+        mark(st, sc, "Handed in", sc.teacher_id, None, days)
+        if state == "approved":
+            mark(st, sc, "Approved", ch[0] if ch else None, None, days - 1)
+            st.status, st.waiting_for_id = "approved", None
+        elif state == "submitted":
+            st.status, st.waiting_for_id = "submitted", (ch[0] if ch else None)
+        elif state == "returned":
+            mark(st, sc, "Sent back", ch[0] if ch else None, "Two marks look wrong. Please check the scripts.", days - 1)
+            studs = sc.students()
+            st.status, st.row_notes = "returned", {str(studs[0].id): "The script shows 14, not 41?", str(studs[-1].id): "Missing a mark"} if len(studs) > 1 else {}
+        return st
+
+    def publish(c, comp):
+        r = db.scalar(select(ComponentRelease).where(ComponentRelease.term_id == term.id, ComponentRelease.class_id == c.id, ComponentRelease.component == comp))
+        if r:
+            return
+        snap, _ = snapshot(db, c, term, comp)
+        db.add(ComponentRelease(term_id=term.id, class_id=c.id, component=comp, locked=True, published_at=now - timedelta(days=5), snapshot=snap,
+                                history=[{"at": now.isoformat(), "by": "Sample data", "action": "Published", "note": None}]))
+
+    full_studs = list(db.scalars(select(Student).where(Student.class_id == full_class.id, Student.status == StudentStatus.active)))
+    for _, keys in class_subjects(db, full_class, full_studs):
+        for k in keys:
+            for comp in names:
+                step(k, comp, "approved")
+    db.flush()
+    for comp in names:
+        publish(full_class, comp)
+    print(f"  {full_class.name}: every test approved, published and locked.")
+    if half_class:
+        studs = list(db.scalars(select(Student).where(Student.class_id == half_class.id, Student.status == StudentStatus.active)))
+        keys = [k for _, ks in class_subjects(db, half_class, studs) for k in ks]
+        for k in keys:
+            step(k, names[0], "approved", 14)
+        db.flush()
+        publish(half_class, names[0])
+        if len(names) > 1:
+            ids = [x.id for x in studs]
+            with_ca2 = [k for k in keys if db.scalar(select(Score.id).where(Score.term_id == term.id, Score.subject_id == Scope(db, k).subject.id, Score.student_id.in_(ids),
+                                                                            Score.component.like(names[1] + "%")).limit(1))]
+            for i, k in enumerate(with_ca2):
+                state = ["submitted", "submitted", "returned", "approved", "draft"][i % 5]
+                if state != "draft":
+                    step(k, names[1], state, 2)
+            t = next((Scope(db, k).teacher_id for k in keys if Scope(db, k).teacher_id), None)
+            if t and not db.scalar(select(WindowOpening.id).where(WindowOpening.term_id == term.id, WindowOpening.teacher_id == t)):
+                db.add(WindowOpening(school_id=school.id, term_id=term.id, component=names[0], teacher_id=t, until=now + timedelta(days=2), reason="Was on leave when CA1 closed"))
+        print(f"  {half_class.name}: {names[0]} approved and published; {names[1] if len(names) > 1 else ''} at every step (with heads, one sent back, typing).")
 
 
 def report_cards(db, c: SchoolClass, term: Term, studs: list[Student], rnd: random.Random) -> int:
@@ -171,6 +245,8 @@ def results(school_part: str | None = None, class_name: str | None = None) -> No
     other = next((x for x in classes if x.level == c.level and x.id != c.id and size(x) and has_subjects(x)), None)
     if other:
         fill(db, other, term, school.id, False, rnd)
+    db.flush()
+    checks_and_padlocks(db, school, term, c, other, rnd)
     db.flush()
     n = report_cards(db, c, term, studs, rnd)
     h = homework(db, c, term, studs, rnd)

@@ -21,6 +21,7 @@ import { ChildPage, FamilyHomePage } from "./Family";
 import { ApplyPage } from "./Apply";
 import ClassPage from "./ClassPage";
 import { MarksPage, ResultsPage, SheetPage, VerifyPage } from "./Assessment";
+import { CheckPage } from "./ScoreControl";
 
 export default function App() {
   const [me, setMe] = useState<Me | null>(null);
@@ -85,6 +86,7 @@ export default function App() {
     if (route.page === "marks") return <MarksPage key={route.tab} {...common} tab={route.tab} />;
     if (route.page === "sheet") return <SheetPage key={route.scope} {...common} scope={route.scope} />;
     if (route.page === "results") return <ResultsPage key={route.id} {...common} classId={route.id} />;
+    if (route.page === "check") return <CheckPage {...common} />;
     if (route.page === "board" && isBoard) return <BoardView {...common} />;
     if (route.page === "staff-record") return <StaffRecordPage key={route.id} {...common} schoolId={route.school} userId={route.id} />;
     if (route.page === "staff-cards") return <IdCardsPage key={`${route.school}${route.id}`} {...common} schoolId={route.school} userId={route.id} />;
@@ -114,6 +116,8 @@ export default function App() {
       return <SheetPage key={route.scope} {...common} scope={route.scope} />;
     case "results":
       return <ResultsPage key={route.id} {...common} classId={route.id} />;
+    case "check":
+      return <CheckPage {...common} />;
     case "staff":
       return <StaffHome {...common} />;
     case "staff-record":

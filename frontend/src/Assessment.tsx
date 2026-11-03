@@ -9,6 +9,7 @@ import { subjectLook } from "./look";
 import { href } from "./router";
 import { PrintSheet, Qr } from "./Scanner";
 import { Avatar, Field, Glyph, hue, Modal, Stat } from "./ui";
+import { ControlRoom, FamilyScores } from "./ScoreControl";
 
 // ---------- Types and calls ----------
 
@@ -16,15 +17,20 @@ interface TermInfo { id: string; name: string; number: number; session: string; 
 interface Col { key: string; label: string; group: string | null; max: number }
 interface Band { grade: string; min: number; max: number; remark: string }
 interface SheetRow { id: string; name: string; first_name: string; admission_no: string; thumb: string | null; class_name: string | null; marks: Record<string, number | null>;
-  absent: string[]; components: Record<string, number | null>; total: number | null; grade: string | null; remark: string | null; filled: number; position: string | null }
-interface Sheet {
+  absent: string[]; components: Record<string, number | null>; total: number | null; grade: string | null; remark: string | null; filled: number; position: string | null; locked: string[] }
+export interface Step { status: string; label: string; waiting_for: string | null; waiting_for_id: string | null; can_type: boolean; why_not: string | null;
+  deadline: { closes_at: string | null; closed: boolean; open_for_me: boolean; opened_until: string | null }; locked_classes: string[]; published_classes: string[];
+  locked: boolean; published: boolean; can_submit: boolean; can_check: boolean; row_notes: Record<string, string>; history: { at: string; by: string; action: string; note: string | null }[] }
+export interface Sheet {
   scope: string; title: string; subject: { id: string; name: string }; group: string; level: string; class_id: string | null; school_id: string; teacher: string | null; term: TermInfo;
-  scheme: { name: string; max: number; parts: { name: string; max: number }[] }[]; columns: Col[]; bands: Band[]; students: SheetRow[]; status: string; status_note: string | null;
-  submitted_at: string | null; submitted_by: string | null; can_edit: boolean; can_reopen: boolean; is_teacher: boolean;
+  scheme: { name: string; max: number; parts: { name: string; max: number }[] }[]; columns: Col[]; bands: Band[]; students: SheetRow[]; status: string;
+  steps: Record<string, Step>; can_edit: boolean; is_teacher: boolean; is_authority: boolean; teacher_id: string | null;
+  checks?: Record<string, { warnings: { level: string; text: string }[] }>;
   stats: { average: number | null; highest: number | null; lowest: number | null; passed: number; scored: number; students: number; complete: number; grades: Record<string, number>; pass_mark: number };
   homework: { id: string; title: string; kind: string; max_score: number; counts_to: string | null; marked: number }[];
 }
-interface MySheet { scope: string; subject: string; group: string; level: string; students: number; progress: number; status: string; term: string; term_id: string; school_id: string }
+interface MySheet { scope: string; subject: string; group: string; level: string; students: number; progress: number; status: string; term: string; term_id: string; school_id: string;
+  tests: { name: string; status: string; label: string; closes_at: string | null; closed: boolean; open_for_me: boolean }[] }
 interface Work { id: string; scope: string; kind: string; kind_label: string; title: string; instructions: string | null; link: string | null; set_on: string; due_on: string | null; due: string;
   max_score: number | null; online: boolean; counts_to: string | null; subject: string; group: string; teacher: string | null; students: number; handed_in: number; to_mark: number; marked: number; missing: number }
 interface WorkRow { id: string; name: string; thumb: string | null; has_login: boolean; state: string; late: boolean; text: string | null; link: string | null; handed_in_at: string | null; score: number | null; feedback: string | null }
@@ -35,7 +41,7 @@ interface BroadRow { id: string; name: string; first_name: string; thumb: string
 interface Broad {
   class: { id: string; name: string; level: string; form_teacher: string | null }; school: { id: string; name: string }; term: TermInfo;
   subjects: { id: string; name: string; short: string; scopes: string[]; teacher: string | null; status: string; average: number | null; highest: number | null; lowest: number | null; scored: number; takers: number; complete: boolean }[];
-  students: BroadRow[]; stats: { average: number | null; highest: number | null; lowest: number | null; size: number }; sheets_in: number; can_manage: boolean; is_form_teacher: boolean;
+  students: BroadRow[]; stats: { average: number | null; highest: number | null; lowest: number | null; size: number }; sheets_in: number; can_manage: boolean; can_publish: boolean; is_form_teacher: boolean;
   published: number; traits: Record<string, string[]>; bands: Band[];
 }
 export interface Card {
@@ -52,7 +58,7 @@ export interface Card {
   traits: Record<string, number>; trait_groups: Record<string, string[]>; trait_words: Record<string, string>;
   teacher_comment: string | null; principal_comment: string | null; bands: Band[]; code?: string;
 }
-interface StaffCard { card: Card; class_id: string; status: string; code: string | null; published_at: string | null; can_manage: boolean; can_comment: boolean; seen: boolean }
+interface StaffCard { card: Card; class_id: string; can_publish: boolean; status: string; code: string | null; published_at: string | null; can_manage: boolean; can_comment: boolean; seen: boolean }
 interface HomeItem { id: string; kind: string; kind_label: string; title: string; instructions: string | null; link: string | null; subject: string; teacher: string | null; set_on: string;
   due_on: string | null; due: string; days: number | null; online: boolean; max_score: number | null; state: string;
   mine: { text: string | null; link: string | null; at: string | null; score: number | null; feedback: string | null } | null }
@@ -62,10 +68,10 @@ interface CardRow { id: string; term_id: string; term: string; session: string; 
 const tq = (t?: string | null) => (t ? `?term_id=${t}` : "");
 export const aapi = {
   mySheets: () => api.raw<MySheet[]>("GET", "/api/me/score-sheets"),
-  sheet: (scope: string, term?: string | null) => api.raw<Sheet>("GET", `/api/score-sheets/${encodeURIComponent(scope)}${tq(term)}`),
+  sheet: (scope: string, term?: string | null, check = false) => api.raw<Sheet>("GET", `/api/score-sheets/${encodeURIComponent(scope)}${tq(term)}${check ? `${term ? "&" : "?"}check=true` : ""}`),
   marks: (scope: string, term_id: string, marks: { student_id: string; key: string; value: number | null; absent: boolean }[]) => api.raw<Sheet>("PUT", `/api/score-sheets/${encodeURIComponent(scope)}`, { term_id, marks }),
-  submit: (scope: string, term_id: string, even_if_missing: boolean) => api.raw<Sheet>("POST", `/api/score-sheets/${encodeURIComponent(scope)}/submit`, { term_id, even_if_missing }),
-  reopen: (scope: string, term_id: string, note: string | null) => api.raw<Sheet>("POST", `/api/score-sheets/${encodeURIComponent(scope)}/reopen`, { term_id, note }),
+  handInSheet: (scope: string, term_id: string, components: string[], even_if_missing: boolean, note: string | null) => api.raw<Sheet>("POST", `/api/score-sheets/${encodeURIComponent(scope)}/hand-in`, { term_id, components, even_if_missing, note }),
+  check: (scope: string, b: unknown) => api.raw<{ status: string }>("POST", `/api/score-sheets/${encodeURIComponent(scope)}/check`, b),
   work: () => api.raw<{ assignments: Work[]; scopes: { scope: string; title: string; subject: string; group: string; level: string }[]; kinds: Record<string, string> }>("GET", "/api/me/assignments"),
   addWork: (b: unknown) => api.raw<Work>("POST", "/api/assignments", b),
   editWork: (id: string, b: unknown) => api.raw<Work>("PUT", `/api/assignments/${id}`, b),
@@ -162,7 +168,8 @@ function MySheets() {
           <a key={x.scope} className={`as-sheet-card${x.status === "submitted" ? " done" : ""}`} href={href({ page: "sheet", scope: x.scope })} style={hue(l.hue)}>
             <Glyph icon={l.icon} hue={l.hue} size={42} />
             <span className="grow"><b>{x.subject}</b><small className="block">{x.group} · {x.students} students</small>
-              {x.status === "submitted" ? <span className="hue-chip" style={hue("green")}><Icon name="circle-check" size={12} />Handed in</span> : <span className="small muted">{x.progress === 0 ? "Not started" : "In progress"}</span>}</span>
+              <span className="as-mini-tests">{(x.tests ?? []).map((t) => <span key={t.name} className="hue-chip" style={hue(({ draft: t.closed && !t.open_for_me ? "slate" : "sky", submitted: "amber", returned: "red", approved: "green" } as Record<string, string>)[t.status])}
+                title={t.closes_at ? `Closes ${new Date(t.closes_at).toLocaleString("en-GB")}` : undefined}>{t.status === "draft" && t.closed && !t.open_for_me ? "🔒 " : ""}{t.name}: {t.status === "draft" ? (t.closed && !t.open_for_me ? "closed" : "typing") : t.label.toLowerCase()}</span>)}</span></span>
             <Ring value={x.progress} />
           </a>); })}
       </div>
@@ -179,10 +186,11 @@ export function SheetPage({ me, onLogout, scope }: { me: Me; onLogout: () => voi
   const [draft, setDraft] = useState<Record<string, string>>({});       // "studentId|key" -> what is typed
   const [saving, setSaving] = useState<"" | "saving" | "saved" | "error">("");
   const [saveErr, setSaveErr] = useState("");
-  const [modal, setModal] = useState<null | "submit" | "reopen" | "homework">(null);
+  const [modal, setModal] = useState<null | "handin" | "homework" | { check: string }>(null);
+  const [history, setHistory] = useState(false);
   const pending = useRef<Record<string, { student_id: string; key: string; value: number | null; absent: boolean }>>({});
   const timer = useRef<number | undefined>(undefined);
-  const load = (t: string | null) => aapi.sheet(scope, t).then((x) => { setD(x); setDraft({}); }).catch((e) => setError(errorText(e)));
+  const load = (t: string | null) => aapi.sheet(scope, t, true).then((x) => { setD(x); setDraft({}); }).catch((e) => setError(errorText(e)));
   useEffect(() => { void load(term); }, [scope, term]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const flush = async () => {
@@ -193,7 +201,7 @@ export function SheetPage({ me, onLogout, scope }: { me: Me; onLogout: () => voi
     setSaving("saving");
     try {
       const x = await aapi.marks(scope, d.term.id, marks);
-      setD(x);
+      setD((old) => ({ ...x, checks: old?.checks }));
       setDraft((dr) => { const n = { ...dr }; for (const m of marks) delete n[`${m.student_id}|${m.key}`]; return n; });
       setSaving("saved"); setSaveErr("");
     } catch (e) { setSaving("error"); setSaveErr(errorText(e)); }
@@ -204,6 +212,8 @@ export function SheetPage({ me, onLogout, scope }: { me: Me; onLogout: () => voi
   if (!d) return <Layout me={me} onLogout={onLogout} crumbs={[{ label: "Home", href: "#/" }]}><div className="skeleton"><span /><span /><span /></div></Layout>;
   const cols = d.columns;
   const l = subjectLook(d.subject.name);
+  const compOf = (k: string) => k.split(" › ")[0];
+  const editable = (r: SheetRow, c: Col) => d.steps[compOf(c.key)]?.can_type && !r.locked.includes(compOf(c.key));
   const valueOf = (r: SheetRow, k: string) => draft[`${r.id}|${k}`] ?? (r.absent.includes(k) ? "ABS" : r.marks[k] == null ? "" : String(r.marks[k]));
   const bad = (txt: string, c: Col) => { if (txt === "" || /^abs$/i.test(txt)) return false; const n = Number(txt); return Number.isNaN(n) || n < 0 || n > c.max; };
   const change = (r: SheetRow, c: Col, txt: string) => {
@@ -223,11 +233,14 @@ export function SheetPage({ me, onLogout, scope }: { me: Me; onLogout: () => voi
     const lines = e.clipboardData.getData("text").replace(/\r/g, "").split("\n").filter((x, i, a) => x !== "" || i < a.length - 1);
     if (lines.length < 2 && !lines[0]?.includes("\t")) return;
     e.preventDefault();
-    lines.forEach((line, i) => line.split("\t").forEach((cell, j) => { const r = d.students[ri + i], c = cols[ci + j]; if (r && c) change(r, c, cell.trim()); }));
+    lines.forEach((line, i) => line.split("\t").forEach((cell, j) => { const r = d.students[ri + i], c = cols[ci + j]; if (r && c && editable(r, c)) change(r, c, cell.trim()); }));
   };
   const grades = d.bands.map((b) => ({ ...b, n: d.stats.grades[b.grade] ?? 0 }));
   const most = Math.max(1, ...grades.map((g) => g.n));
   const missing = d.stats.students - d.stats.complete;
+  const canHandIn = Object.values(d.steps).some((x) => x.can_submit);
+  const notes = Object.values(d.steps).reduce<Record<string, string[]>>((m, x) => { for (const [sid, t] of Object.entries(x.row_notes)) (m[sid] ??= []).push(t); return m; }, {});
+  const allHistory = Object.entries(d.steps).flatMap(([c, x]) => x.history.map((h) => ({ ...h, test: c }))).sort((a, b) => b.at.localeCompare(a.at));
   const crumbs = [{ label: "Home", href: "#/" }, ...(d.is_teacher ? [{ label: "My marking", href: href({ page: "marks", tab: "sheets" }) }] : d.class_id ? [{ label: "Results", href: href({ page: "results", id: d.class_id }) }] : []), { label: d.title }];
   return (
     <Layout wide me={me} onLogout={onLogout} crumbs={crumbs}>
@@ -239,16 +252,14 @@ export function SheetPage({ me, onLogout, scope }: { me: Me; onLogout: () => voi
         <div className="class-hero-actions">
           <TermPick term={d.term} onPick={setTerm} />
           {d.can_edit && d.homework.length > 0 && <button className="on-band with-icon" onClick={() => setModal("homework")}><Icon name="notebook" size={15} />Use homework marks</button>}
-          {d.can_edit && d.status !== "submitted" && <button className="on-band with-icon" onClick={() => setModal("submit")}><Icon name="send" size={15} />Hand in</button>}
-          {d.can_reopen && <button className="on-band with-icon" onClick={() => setModal("reopen")}><Icon name="refresh" size={15} />Reopen</button>}
+          {canHandIn && <button className="on-band with-icon" onClick={() => setModal("handin")}><Icon name="send" size={15} />Hand in</button>}
         </div>
       </header>
-      {d.status === "submitted" ? <p className="as-banner" style={hue("green")}><Icon name="circle-check" size={16} />Handed in by {d.submitted_by} on {nice(d.submitted_at!)}.{!d.can_edit && " Ask the principal if something needs changing."}</p>
-        : d.status_note ? <p className="as-banner" style={hue("amber")}><Icon name="refresh" size={16} />Reopened: “{d.status_note}”</p> : null}
+      <TestsStrip d={d} onCheck={(c) => setModal({ check: c })} />
       <div className="stat-strip">
         <Stat icon="students" hue="violet" value={`${d.stats.complete}/${d.stats.students}`} label="students complete" note={missing ? `${missing} still have gaps` : "Every mark is in"} />
         <Stat icon="chart" hue="blue" value={fmt(d.stats.average)} label="class average" note={d.stats.highest != null ? `Highest ${fmt(d.stats.highest)} · lowest ${fmt(d.stats.lowest)}` : undefined} />
-        <Stat icon="circle-check" hue="green" value={`${d.stats.passed}/${d.stats.scored || 0}`} label={`scored ${d.stats.pass_mark} or more`} />
+        <Stat icon="circle-check" hue="green" value={`${d.stats.passed}/${d.stats.scored || 0}`} label={`scored ${d.stats.pass_mark} or more`} note={d.students.some((r) => r.total != null && !r.grade) ? "Grades show once every test is in" : undefined} />
       </div>
       <div className="as-grades" aria-label="Grades">
         {grades.map((g) => <span key={g.grade} style={hue(gradeHue(g.grade))} title={`${g.grade}: ${g.min}–${g.max} ${g.remark}`}><i style={{ height: `${8 + (52 * g.n) / most}px` }} /><b>{g.n}</b><small>{g.grade}</small></span>)}
@@ -260,16 +271,20 @@ export function SheetPage({ me, onLogout, scope }: { me: Me; onLogout: () => voi
           <table className="as-sheet">
             <thead>
               {d.scheme.some((c) => c.parts.length) && <tr><th colSpan={2} />{d.scheme.map((c) => <th key={c.name} colSpan={Math.max(1, c.parts.length)} className="grp">{c.name}</th>)}<th colSpan={3} /></tr>}
-              <tr><th>#</th><th className="name">Student</th>{cols.map((c) => <th key={c.key}>{c.label}<small>/{c.max}</small></th>)}<th>Total</th><th>Grade</th><th>Pos</th></tr>
+              <tr><th>#</th><th className="name">Student</th>{cols.map((c) => { const st = d.steps[compOf(c.key)]; return (
+                <th key={c.key} className={st?.can_type ? "" : "shut"} title={st?.can_type ? undefined : st?.why_not ?? undefined}>
+                  {st?.locked ? "🔒 " : !st?.can_type ? <Icon name="lock" size={11} /> : null}{c.label}<small>/{c.max}</small></th>); })}<th>Total</th><th>Grade</th><th>Pos</th></tr>
             </thead>
             <tbody>
               {d.students.map((r, ri) => (
-                <tr key={r.id}>
+                <tr key={r.id} className={notes[r.id] ? "noted" : ""}>
                   <td className="muted">{ri + 1}</td>
-                  <td className="name">{r.thumb ? <img className="mini-face" src={r.thumb} alt="" /> : <Avatar name={r.name} size={28} />}<span>{r.name}{d.level && r.class_name && d.group !== r.class_name && <small className="muted"> {r.class_name}</small>}</span></td>
-                  {cols.map((c, ci) => { const v = valueOf(r, c.key); return (
-                    <td key={c.key} className={bad(v, c) ? "bad" : ""}>
-                      <input data-cell={`${ri}-${ci}`} inputMode="decimal" value={v} disabled={!d.can_edit} aria-label={`${r.name} ${c.key}`}
+                  <td className="name">{r.thumb ? <img className="mini-face" src={r.thumb} alt="" /> : <Avatar name={r.name} size={28} />}
+                    <span>{r.name}{d.level && r.class_name && d.group !== r.class_name && <small className="muted"> {r.class_name}</small>}
+                      {notes[r.id] && <small className="as-row-note">⚠ {notes[r.id].join(" · ")}</small>}</span></td>
+                  {cols.map((c, ci) => { const v = valueOf(r, c.key); const ok = editable(r, c); return (
+                    <td key={c.key} className={`${bad(v, c) ? "bad" : ""}${ok ? "" : " shut"}`}>
+                      <input data-cell={`${ri}-${ci}`} inputMode="decimal" value={v} disabled={!ok} aria-label={`${r.name} ${c.key}`}
                              onChange={(e) => change(r, c, e.target.value)} onKeyDown={(e) => onKey(e, ri, ci)} onPaste={(e) => onPaste(e, ri, ci)} onFocus={(e) => e.target.select()} />
                     </td>); })}
                   <td className="tot">{fmt(r.total)}</td>
@@ -281,39 +296,90 @@ export function SheetPage({ me, onLogout, scope }: { me: Me; onLogout: () => voi
           </table>
         </div>
       </section>
-      {modal === "submit" && (
-        <Modal title="Hand in this score sheet" onClose={() => setModal(null)}>
-          <SubmitBox missing={missing} onCancel={() => setModal(null)} onGo={async () => { await flush(); setD(await aapi.submit(scope, d.term.id, true)); setModal(null); }} />
-        </Modal>
+      {allHistory.length > 0 && (
+        <section className="card editor">
+          <button className="text-link with-icon" onClick={() => setHistory(!history)}><Icon name="history" size={15} />{history ? "Hide" : "Show"} the history of this sheet ({allHistory.length})</button>
+          {history && <ol className="as-history">{allHistory.map((h, i) => <li key={i}><b>{h.test}</b> · {h.action} by {h.by}{h.note ? `: “${h.note}”` : ""}<small className="muted block">{new Date(h.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</small></li>)}</ol>}
+        </section>
       )}
-      {modal === "reopen" && <ReopenBox onClose={() => setModal(null)} onGo={async (note) => { setD(await aapi.reopen(scope, d.term.id, note)); setModal(null); }} />}
+      {modal === "handin" && <HandInBox d={d} onClose={() => setModal(null)} onGo={async (comps, note) => { await flush(); const x = await aapi.handInSheet(scope, d.term.id, comps, true, note); setD({ ...x, checks: d.checks }); setModal(null); }} />}
       {modal === "homework" && <UseHomework d={d} onClose={() => setModal(null)} onDone={() => { setModal(null); void load(d.term.id); }} />}
+      {modal && typeof modal === "object" && <CheckBox d={d} comp={modal.check} onClose={() => setModal(null)} onDone={() => { setModal(null); void load(d.term.id); }} />}
     </Layout>
   );
 }
 
-function SubmitBox({ missing, onCancel, onGo }: { missing: number; onCancel: () => void; onGo: () => Promise<void> }) {
-  const [busy, error, run] = useBusy();
+const STEP_HUE: Record<string, string> = { draft: "slate", submitted: "amber", returned: "red", approved: "green" };
+const whenText = (iso: string) => new Date(iso).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+function TestsStrip({ d, onCheck }: { d: Sheet; onCheck: (comp: string) => void }) {
   return (
-    <div className="stack">
-      {missing ? <p className="as-banner" style={hue("amber")}><Icon name="info" size={16} />{missing} student{missing === 1 ? " has" : "s have"} empty marks. Type ABS for anyone who missed a test.</p>
-        : <p>Every mark is in. 🎉</p>}
-      <p className="muted small">Once you hand it in, the form teacher can use it for report cards and you can't change it. If you need to, the principal can open it again.</p>
-      {error && <p className="error">{error}</p>}
-      <div className="row"><span className="grow" /><button onClick={onCancel}>Not yet</button><button className="primary" disabled={busy} onClick={() => run(onGo)}>{missing ? "Hand in anyway" : "Hand in"}</button></div>
+    <div className="as-tests">
+      {d.scheme.map((c) => { const st = d.steps[c.name]; if (!st) return null; const dl = st.deadline; return (
+        <div key={c.name} className={`as-test s-${st.status}${st.locked ? " locked" : ""}`} style={hue(st.locked ? "indigo" : STEP_HUE[st.status])}>
+          <div className="row"><b className="grow">{st.locked ? "🔒 " : ""}{c.name} <small className="muted">/{c.max}</small></b>
+            <span className="hue-chip">{st.locked ? "Published" : st.published && st.status === "approved" ? "Published · 🔓" : st.label}</span></div>
+          <small className="as-test-line">
+            {st.status === "submitted" ? <>Waiting for <b>{st.waiting_for}</b></>
+              : st.status === "returned" ? "Sent back: fix and hand in again"
+              : st.status === "approved" ? (st.locked ? "Families can see it" : "Students can see it")
+              : dl.closes_at ? (dl.closed ? (dl.opened_until ? <>Open for you until <b>{whenText(dl.opened_until)}</b></> : <>Closed {whenText(dl.closes_at)}</>) : <>Closes <b>{whenText(dl.closes_at)}</b></>) : "No deadline set"}
+          </small>
+          {d.checks?.[c.name] && st.can_check && <ul className="as-warn">{d.checks[c.name].warnings.map((w, i) => <li key={i} className={w.level}>{w.level === "green" ? "✔" : "⚠"} {w.text}</li>)}</ul>}
+          {st.can_check && <button className="small-btn primary with-icon" onClick={() => onCheck(c.name)}><Icon name="clipboard-list" size={13} />Check {c.name}</button>}
+        </div>); })}
     </div>
   );
 }
 
-function ReopenBox({ onClose, onGo }: { onClose: () => void; onGo: (note: string | null) => Promise<void> }) {
+function HandInBox({ d, onClose, onGo }: { d: Sheet; onClose: () => void; onGo: (comps: string[], note: string | null) => Promise<void> }) {
+  const ready = d.scheme.filter((c) => d.steps[c.name]?.can_submit).map((c) => c.name);
+  const gaps = (comp: string) => { const keys = d.columns.filter((c) => c.key.split(" › ")[0] === comp).map((c) => c.key);
+    return d.students.filter((r) => keys.some((k) => r.marks[k] == null && !r.absent.includes(k))).length; };
+  const typed = (comp: string) => d.students.some((r) => d.columns.some((c) => c.key.split(" › ")[0] === comp && r.marks[c.key] != null));
+  const [pick, setPick] = useState<string[]>(ready.filter(typed));
   const [note, setNote] = useState("");
   const [busy, error, run] = useBusy();
+  const miss = pick.reduce((n, c) => n + gaps(c), 0);
   return (
-    <Modal title="Open the sheet again" onClose={onClose}>
+    <Modal title="Hand in for checking" onClose={onClose}>
       <div className="stack">
-        <Field label="Tell the teacher what to check (optional)"><input value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Exam marks for row 4 look too high" /></Field>
+        <p className="small muted">Choose the tests that are finished. They go to the unit head (or HOD) to check, and you can't change them unless they are sent back.</p>
+        <div className="rec-tick-grid">{ready.map((c) => <label key={c} className={`check-pill${pick.includes(c) ? " on" : ""}`}><input type="checkbox" checked={pick.includes(c)} onChange={() => setPick(pick.includes(c) ? pick.filter((x) => x !== c) : [...pick, c])} />{c}{gaps(c) ? <small className="muted"> · {gaps(c)} empty</small> : <small> ✔</small>}</label>)}</div>
+        {miss > 0 && <p className="as-banner" style={hue("amber")}><Icon name="info" size={16} />{miss} empty mark{miss === 1 ? "" : "s"}. Type ABS for anyone who missed the test.</p>}
+        <Field label="Note for the checker (optional)"><input value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Two students wrote the test late" /></Field>
         {error && <p className="error">{error}</p>}
-        <div className="row"><span className="grow" /><button onClick={onClose}>Cancel</button><button className="primary" disabled={busy} onClick={() => run(() => onGo(note || null))}>Reopen</button></div>
+        <div className="row"><span className="grow" /><button onClick={onClose}>Not yet</button><button className="primary" disabled={busy || !pick.length} onClick={() => run(() => onGo(pick, note || null))}>Hand in {pick.join(", ")}</button></div>
+      </div>
+    </Modal>
+  );
+}
+
+function CheckBox({ d, comp, onClose, onDone }: { d: Sheet; comp: string; onClose: () => void; onDone: () => void }) {
+  const [mode, setMode] = useState<"approve" | "return">("approve");
+  const [note, setNote] = useState("");
+  const [rows, setRows] = useState<Record<string, string>>({});
+  const [busy, error, run] = useBusy();
+  const keys = d.columns.filter((c) => c.key.split(" › ")[0] === comp);
+  const warn = d.checks?.[comp]?.warnings ?? [];
+  return (
+    <Modal wide title={`Check ${comp} · ${d.title}`} onClose={onClose}>
+      <div className="stack">
+        <ul className="as-warn big">{warn.map((w, i) => <li key={i} className={w.level}>{w.level === "green" ? "✔" : "⚠"} {w.text}</li>)}</ul>
+        <div className="segmented"><button className={mode === "approve" ? "on" : ""} onClick={() => setMode("approve")}><Icon name="circle-check" size={14} />Approve</button>
+          <button className={mode === "return" ? "on" : ""} onClick={() => setMode("return")}><Icon name="undo" size={14} />Send back</button></div>
+        {mode === "return" && <>
+          <p className="small muted">Write a note next to any student whose mark needs looking at. The teacher sees it on their sheet.</p>
+          <ul className="as-check-rows">{d.students.map((r) => (
+            <li key={r.id}><span className="grow">{r.name}</span><b>{keys.map((c) => r.absent.includes(c.key) ? "ABS" : fmt(r.marks[c.key])).join(" + ")}</b>
+              <input value={rows[r.id] ?? ""} maxLength={300} placeholder="Note (optional)" onChange={(e) => setRows({ ...rows, [r.id]: e.target.value })} /></li>))}</ul>
+        </>}
+        <Field label={mode === "approve" ? "Note (optional)" : "What should the teacher fix?"}><input value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} /></Field>
+        {error && <p className="error">{error}</p>}
+        <div className="row"><span className="grow" /><button onClick={onClose}>Cancel</button>
+          <button className="primary" disabled={busy || (mode === "return" && !note.trim() && !Object.values(rows).some((x) => x.trim()))}
+                  onClick={() => run(async () => { await aapi.check(d.scope, { term_id: d.term.id, component: comp, action: mode, note: note || null, row_notes: rows }); onDone(); })}>
+            {mode === "approve" ? `Approve ${comp}` : "Send back"}</button></div>
       </div>
     </Modal>
   );
@@ -488,8 +554,8 @@ export function ResultsPage({ me, onLogout, classId }: { me: Me; onLogout: () =>
         <div className="class-hero-actions">
           <TermPick term={d.term} onPick={setTerm} />
           <button className="on-band with-icon" disabled={busy} onClick={() => run(async () => { const cs: Card[] = []; for (const r of d.students.filter((x) => x.average != null)) cs.push((await aapi.card(r.id, d.term.id)).card); setPrintAll(cs); })}><Icon name="printer" size={15} />Print all cards</button>
-          {d.can_manage && unpublished > 0 && <button className="on-band with-icon" disabled={busy} onClick={() => run(async () => { await aapi.publish(classId, d.term.id); await load(d.term.id); })}><Icon name="send" size={15} />Publish {unpublished} card{unpublished === 1 ? "" : "s"}</button>}
-          {d.can_manage && d.published > 0 && <button className="on-band with-icon" disabled={busy} onClick={() => run(async () => { if (confirm(`Take back all ${d.published} report cards? Families will not see them until you publish again.`)) { await aapi.unpublish(classId, d.term.id); await load(d.term.id); } })}><Icon name="undo" size={15} />Take back</button>}
+          {d.can_publish && unpublished > 0 && <button className="on-band with-icon" disabled={busy} onClick={() => run(async () => { await aapi.publish(classId, d.term.id); await load(d.term.id); })}><Icon name="send" size={15} />Publish {unpublished} card{unpublished === 1 ? "" : "s"}</button>}
+          {d.can_publish && d.published > 0 && <button className="on-band with-icon" disabled={busy} onClick={() => run(async () => { if (confirm(`Take back all ${d.published} report cards? Families will not see them until you publish again.`)) { await aapi.unpublish(classId, d.term.id); await load(d.term.id); } })}><Icon name="undo" size={15} />Take back</button>}
         </div>
       </header>
       {err && <p className="error">{err}</p>}
@@ -555,7 +621,7 @@ function CardEditor({ sid, termId, traits, onClose }: { sid: string; termId: str
     <Modal wide title={`${d.card.student.name} · ${d.card.term.name} report card`} onClose={() => { if (!dirty || confirm("Close without saving?")) onClose(); }}>
       <div className="as-card-edit">
         <div className="stack">
-          {locked && <p className="as-banner" style={hue("green")}><Icon name="circle-check" size={16} />Published{d.published_at ? ` on ${nice(d.published_at)}` : ""}{d.seen ? " · the family has opened it" : ""}.{d.can_manage && " Take it back to change anything."}</p>}
+          {locked && <p className="as-banner" style={hue("green")}><Icon name="circle-check" size={16} />Published{d.published_at ? ` on ${nice(d.published_at)}` : ""}{d.seen ? " · the family has opened it" : ""}.{d.can_publish && " Take it back to change anything."}</p>}
           {!d.can_comment && !locked && <p className="small muted">Only the form teacher and the principal can write on this card.</p>}
           {Object.entries(traits).map(([g, list]) => (
             <fieldset key={g} className="as-traits" disabled={locked || !d.can_comment}><legend>{g}</legend>
@@ -569,10 +635,10 @@ function CardEditor({ sid, termId, traits, onClose }: { sid: string; termId: str
             <textarea rows={2} maxLength={600} value={f.principal_comment} disabled={locked || !d.can_manage} onChange={(e) => upd({ principal_comment: e.target.value })} /></Field>
           {error && <p className="error">{error}</p>}
           <div className="row wrap"><button className="with-icon" onClick={() => setPrint(true)}><Icon name="printer" size={14} />Print</button><span className="grow" />
-            {d.can_manage && locked && <button disabled={busy} onClick={() => run(async () => { await aapi.unpublish(d.class_id, termId, [sid]); take(await aapi.card(sid, termId)); })}>Take back</button>}
+            {d.can_publish && locked && <button disabled={busy} onClick={() => run(async () => { await aapi.unpublish(d.class_id, termId, [sid]); take(await aapi.card(sid, termId)); })}>Take back</button>}
             {!locked && d.can_comment && <button className="primary" disabled={busy || !dirty} onClick={() => run(async () => take(await aapi.saveCard(sid, { term_id: termId, traits: f.traits, teacher_comment: f.teacher_comment,
               ...(d.can_manage ? { principal_comment: f.principal_comment } : {}) })))}>Save</button>}
-            {!locked && d.can_manage && <button className="primary with-icon" disabled={busy} onClick={() => run(async () => {
+            {!locked && d.can_publish && <button className="primary with-icon" disabled={busy} onClick={() => run(async () => {
               if (dirty) await aapi.saveCard(sid, { term_id: termId, traits: f.traits, teacher_comment: f.teacher_comment, principal_comment: f.principal_comment });
               await aapi.publish(d.class_id, termId, [sid]); take(await aapi.card(sid, termId)); })}><Icon name="send" size={14} />Publish this card</button>}
           </div>
@@ -725,9 +791,10 @@ export function ResultsList({ studentId, self }: { studentId: string; self: bool
   const [busy, error, run] = useBusy();
   useEffect(() => { aapi.results(studentId).then((x) => setD(x.cards)).catch(() => setD([])); }, [studentId]);
   if (!d) return <div className="skeleton"><span /><span /></div>;
-  if (d.length === 0) return <div className="adm-empty"><span>📊</span><p><b>No report cards yet.</b></p><p className="muted small">{self ? "Your" : "The"} report card shows here when the school publishes results at the end of term.</p></div>;
   return (
     <section className="stack">
+      <FamilyScores studentId={studentId} />
+      {d.length === 0 && <div className="adm-empty"><span>📊</span><p><b>No report cards yet.</b></p><p className="muted small">{self ? "Your" : "The"} report card shows here when the school publishes results at the end of term. Each test shows above as soon as it is published.</p></div>}
       {error && <p className="error">{error}</p>}
       <div className="as-results">{d.map((c) => (
         <button key={c.id} className={`as-result${c.seen ? "" : " new"}`} disabled={busy} onClick={() => run(async () => { const x = await aapi.familyCard(studentId, c.id); setOpen({ card: x.card, code: x.code }); setD(d.map((y) => y.id === c.id ? { ...y, seen: true } : y)); })}
@@ -746,6 +813,17 @@ export function ResultsList({ studentId, self }: { studentId: string; self: bool
 // ---------- School-wide overview ----------
 
 export function ResultsOverview({ schoolId }: { schoolId: string }) {
+  const [view, setView] = useState<"tests" | "cards">("tests");
+  return (
+    <section className="stack">
+      <div className="segmented"><button className={view === "tests" ? "on" : ""} onClick={() => setView("tests")}><Icon name="send" size={15} />Tests and publishing</button>
+        <button className={view === "cards" ? "on" : ""} onClick={() => setView("cards")}><Icon name="award" size={15} />Report cards</button></div>
+      {view === "tests" ? <ControlRoom schoolId={schoolId} /> : <CardsOverview schoolId={schoolId} />}
+    </section>
+  );
+}
+
+function CardsOverview({ schoolId }: { schoolId: string }) {
   const [d, setD] = useState<Awaited<ReturnType<typeof aapi.overview>> | null>(null);
   const [term, setTerm] = useState<string | null>(null);
   const [error, setError] = useState("");
