@@ -45,6 +45,10 @@ def student_list(school_id: uuid.UUID, include_left: bool = False, branch_id: uu
     if branch_id:
         q = q.where(Student.branch_id == branch_id)
     studs = list(db.scalars(q.order_by(Student.last_name, Student.first_name)))
+    return build_rows(db, school_id, studs)
+
+
+def build_rows(db: Session, school_id: uuid.UUID, studs: list[Student]) -> list[dict]:
     ids = [s.id for s in studs] or [uuid.uuid4()]
     houses = {h.id: h for h in db.scalars(select(House).where(House.school_id == school_id))}
     classes = {c.id: c for c in db.scalars(select(SchoolClass).join(Branch, Branch.id == SchoolClass.branch_id).where(Branch.school_id == school_id))}
@@ -72,10 +76,13 @@ def student_list(school_id: uuid.UUID, include_left: bool = False, branch_id: uu
     for s in studs:
         gs = guardians[s.id]
         h = health.get(s.id)
-        missing = [n for n, ok in (("photo", bool(s.photo)), ("date of birth", bool(s.date_of_birth)), ("class", bool(s.class_id)), ("house", bool(s.house_id)),
-                                   ("parent phone", any(g.user.phone for g in gs)), ("address", bool(s.home_address)), ("health record", bool(h)),
-                                   ("birth certificate", "birth_certificate" in docs[s.id]), ("LGA", bool(s.lga)), ("bed", s.boarding_status.value != "boarder" or s.id in beds))
-                   if not ok]
+        # The same checks as the profile's "profile complete" ring.
+        checks = [("photo", bool(s.photo)), ("date of birth", bool(s.date_of_birth)), ("state and LGA", bool(s.state_of_origin and s.lga)),
+                  ("home address", bool(s.home_address)), ("class", bool(s.class_id)), ("house", bool(s.house_id)),
+                  ("parent phone", any(g.user.phone for g in gs)), ("main contact", any(g.is_primary for g in gs)), ("health record", bool(h)),
+                  ("birth certificate", "birth_certificate" in docs[s.id]), ("passport photo", "passport_photo" in docs[s.id] or bool(s.photo)),
+                  ("date admitted", bool(s.admitted_on))]
+        missing = [n for n, ok in checks if not ok]
         c = classes.get(s.class_id)
         hs = houses.get(s.house_id)
         a = att.get(s.id)
@@ -88,8 +95,85 @@ def student_list(school_id: uuid.UUID, include_left: bool = False, branch_id: uu
                      "parent": next((f"{g.user.full_name} {g.user.phone or ''}".strip() for g in sorted(gs, key=lambda g: not g.is_primary)), None),
                      "allergy": h.allergies if h else None, "late_books": late_books.get(s.id, 0),
                      "attendance": round(100 * a[0] / a[1]) if a and a[1] else None, "points": int(points.get(s.id) or 0),
-                     "missing": missing, "complete": round(100 * (10 - len(missing)) / 10)})
+                     "missing": missing, "complete": round(100 * (len(checks) - len(missing)) / len(checks))})
     return rows
+
+
+# ---------- One class ----------
+
+@router.get("/classes/{class_id}/page")
+def class_page(class_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Everything about one class: its students, today's register, subjects and teachers, and its week."""
+    from app.models import ClassSubject, Subject
+    from app.models.attendance import AttendanceRecord as AR
+    c = db.get(SchoolClass, class_id)
+    if not c:
+        raise not_found("Class")
+    branch = db.get(Branch, c.branch_id)
+    school = db.get(School, branch.school_id)
+    full = rights.has(user, school, "students.see", db)
+    teaches = db.scalar(select(ClassSubject.id).where(ClassSubject.class_id == c.id, ClassSubject.teacher_user_id == user.id))
+    why = "Students" if full else "Form teacher" if c.form_teacher_id == user.id else "Subject teacher" if teaches else None
+    if not why:
+        raise not_found("Class")
+    studs = list(db.scalars(select(Student).where(Student.class_id == c.id, Student.status == StudentStatus.active).order_by(Student.last_name, Student.first_name)))
+    rows = build_rows(db, school.id, studs)
+    if not full:
+        for r in rows:
+            r.pop("parent", None)
+            r.pop("missing", None)
+    today = now_wat().date()
+    marks = {sid: st.value for sid, st in db.execute(select(AR.student_id, AR.status).where(AR.class_id == c.id, AR.on_date == today, AR.kind == AttendanceKind.school))}
+    for r in rows:
+        r["today"] = marks.get(uuid.UUID(r["id"]))
+    subjects = [{"subject": sub.name, "teacher": u.full_name if u else None, "teacher_id": str(u.id) if u else None, "elective": not cs.compulsory}
+                for cs, sub, u in db.execute(select(ClassSubject, Subject, User).join(Subject, Subject.id == ClassSubject.subject_id)
+                                             .outerjoin(User, User.id == ClassSubject.teacher_user_id).where(ClassSubject.class_id == c.id).order_by(Subject.name))]
+    ft = db.get(User, c.form_teacher_id) if c.form_teacher_id else None
+    timetable = None
+    try:
+        from app.api.timetable import World, grid_for
+        w = World(db, school.id)
+        if w.st.built_at and (w.st.published_at or rights.has(user, school, "teaching.see", db)):
+            timetable = grid_for(db, w, class_id=c.id)
+    except HTTPException:
+        timetable = None
+    counts = Counter(r["today"] for r in rows)
+    att = [r["attendance"] for r in rows if r["attendance"] is not None]
+    tips = []
+    low = sorted([r for r in rows if r["attendance"] is not None and r["attendance"] < 85], key=lambda r: r["attendance"])
+    if low:
+        tips.append({"kind": "alert", "icon": "attendance", "text": f"{len(low)} below 85% attendance this month, lowest {low[0]['first_name']} {low[0]['last_name']} ({low[0]['attendance']}%)."})
+    stars = sorted([r for r in rows if r["points"] >= 10], key=lambda r: -r["points"])
+    if stars:
+        tips.append({"kind": "strength", "icon": "star", "text": f"Most merit points: {', '.join(r['first_name'] for r in stars[:3])}."})
+    soon = []
+    for s in studs:
+        if s.date_of_birth:
+            try:
+                nxt = s.date_of_birth.replace(year=today.year)
+            except ValueError:
+                nxt = date(today.year, 3, 1)
+            if 0 <= (nxt - today).days <= 7:
+                soon.append(s.first_name)
+    if soon:
+        tips.append({"kind": "strength", "icon": "sparkle", "text": f"Birthday this week: {', '.join(soon)} 🎂"})
+    allergic = [r for r in rows if r["allergy"]]
+    if allergic:
+        tips.append({"kind": "tip", "icon": "circle-x", "text": f"{len(allergic)} with allergies: " + ", ".join(f"{r['first_name']} ({r['allergy']})" for r in allergic[:4]) + "."})
+    late = sum(r["late_books"] for r in rows)
+    if late:
+        tips.append({"kind": "tip", "icon": "book", "text": f"{late} late library book{'s' if late > 1 else ''} in this class."})
+    return {"class": {"id": str(c.id), "name": c.name, "level": c.level, "branch_id": str(branch.id)},
+            "school": {"id": str(school.id), "name": school.name, "colour": school.colour},
+            "form_teacher": {"id": str(ft.id), "name": ft.full_name} if ft else None, "why": why, "full": full,
+            "can_mark": full and rights.has(user, school, "attendance.change", db) or c.form_teacher_id == user.id,
+            "students": rows, "boys": sum(1 for r in rows if r["gender"] == "male"), "girls": sum(1 for r in rows if r["gender"] == "female"),
+            "boarders": sum(1 for r in rows if r["boarding_status"] == "boarder"),
+            "today": {"taken": bool(marks), "present": counts.get("present", 0) + counts.get("late", 0), "absent": counts.get("absent", 0),
+                      "late": counts.get("late", 0), "unmarked": counts.get(None, 0), "date": today.isoformat()},
+            "attendance": round(sum(att) / len(att)) if att else None, "points": sum(r["points"] for r in rows),
+            "subjects": subjects, "timetable": timetable, "insights": tips}
 
 
 # ---------- ID cards ----------

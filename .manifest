@@ -105,6 +105,7 @@ frontend/src/AttendanceTab.tsx
 frontend/src/BoardView.tsx
 frontend/src/BoardsCard.tsx
 frontend/src/Bulk.tsx
+frontend/src/ClassPage.tsx
 frontend/src/Cleaning.tsx
 frontend/src/DailyTabs.tsx
 frontend/src/Dashboard.tsx

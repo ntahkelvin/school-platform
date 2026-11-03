@@ -87,6 +87,8 @@ export function StudentListView({ rows, schoolId, classes, canChange, hasBoardin
   const [sort, setSort] = useState<Sort>("name");
   const [view, setView] = useState<"list" | "faces">(() => { try { return localStorage.getItem("sp_stu_view") === "faces" ? "faces" : "list"; } catch { return "list"; } });
   const [learn, setLearn] = useState(false);
+  const [limit, setLimit] = useState(60);
+  useEffect(() => setLimit(60), [rows, flag, house, sort]);
   const [shown, setShown] = useState<Set<string>>(new Set());
   const [cards, setCards] = useState<string | null>(null);
   const [promote, setPromote] = useState(false);
@@ -182,7 +184,7 @@ export function StudentListView({ rows, schoolId, classes, canChange, hasBoardin
           <label className="check learn-toggle"><input type="checkbox" checked={learn} onChange={(e) => { setLearn(e.target.checked); setShown(new Set()); }} />
             <span><b>Learn names</b> — hide the names, guess, then tap to check. Great for new teachers.</span></label>
           <div className={`face-wall${learn ? " learning" : ""}`}>
-            {list.map((r) => (
+            {list.slice(0, limit).map((r) => (
               <div key={r.id} className="face-card" style={{ ["--hc" as string]: r.house_colour || "var(--border)" }}>
                 <a href={href({ page: "student", id: r.id })} className="face-pic" aria-label={`${r.first_name} ${r.last_name}`}>
                   {r.thumb ? <img src={r.thumb} alt="" /> : <Avatar name={`${r.first_name} ${r.last_name}`} size={72} />}
@@ -209,7 +211,7 @@ export function StudentListView({ rows, schoolId, classes, canChange, hasBoardin
               </tr>
             </thead>
             <tbody>
-              {list.map((r) => (
+              {list.slice(0, limit).map((r) => (
                 <tr key={r.id} className="clickable" onClick={() => go({ page: "student", id: r.id })}>
                   <td>
                     <span className="person">
@@ -242,10 +244,11 @@ export function StudentListView({ rows, schoolId, classes, canChange, hasBoardin
               ))}
             </tbody>
           </table>
-          <p className="muted small table-foot">{list.length} of {rows.length} {rows.length === 1 ? "student" : "students"}</p>
+          <p className="muted small table-foot">{Math.min(limit, list.length)} of {list.length}{list.length < rows.length ? ` (${rows.length} in all)` : ""} {rows.length === 1 ? "student" : "students"}</p>
         </div>
       )}
 
+      {list.length > limit && <button className="show-more" onClick={() => setLimit(limit + 100)}>Show {Math.min(100, list.length - limit)} more <span className="muted">({list.length - limit} left)</span></button>}
       {cards && <IdCards schoolId={schoolId} query={cards} onClose={() => setCards(null)} />}
       {promote && <Promotion schoolId={schoolId} rows={rows} classes={classes} onClose={() => setPromote(false)} onDone={onChanged} />}
     </>

@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, errorText, getToken, type NewLogin } from "./api";
 import { ApplyForm, type ApplyData, type PublicSchool } from "./Apply";
+import { makeThumb } from "./StudentYear";
 import { InsightList, useBusy } from "./GrowthBits";
 import type { Insight } from "./growthApi";
 import Icon from "./Icon";
@@ -308,7 +309,12 @@ function EnrolForm({ a, classes, onClose, onDone }: { a: Detail; classes: Overvi
   const [busy, error, run] = useBusy();
   return (
     <Modal title={`Enrol ${a.first_name}`} onClose={onClose}>
-      <form className="stack" onSubmit={(e) => { e.preventDefault(); run(async () => onDone(await aapi.enrol(a.id, { class_id: cls, admission_no: num || null }))); }}>
+      <form className="stack" onSubmit={(e) => { e.preventDefault(); run(async () => {
+        const r = await aapi.enrol(a.id, { class_id: cls, admission_no: num || null });
+        // A small copy of the photo for lists and the register.
+        if (a.photo) { const thumb = await makeThumb(a.photo); if (thumb) await api.raw("PUT", `/api/students/${r.student_id}/photo`, { photo: a.photo, thumb }).catch(() => {}); }
+        onDone(r);
+      }); }}>
         <Field label="Class"><select value={cls} onChange={(e) => setCls(e.target.value)} required><option value="">Choose…</option>{classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
         <Field label="Admission number (leave blank to give the next one)"><input value={num} onChange={(e) => setNum(e.target.value)} maxLength={40} /></Field>
         <ul className="enrol-list">

@@ -212,10 +212,10 @@ export function ClassesTab({
                   {list.map((c) => {
                     const boys = c.boys ?? 0, girls = c.girls ?? 0;
                     return (
-                      <div key={c.id} className="class-tile" data-class={c.name}>
+                      <div key={c.id} className="class-tile clickable" data-class={c.name} onClick={() => go({ page: "class", id: c.id })}>
                         <div className="class-top">
-                          <strong className="class-name">{c.level}<span className="class-arm">{c.arm}</span></strong>
-                          <span className="class-tile-actions">
+                          <a className="class-name" href={href({ page: "class", id: c.id })} onClick={(e) => e.stopPropagation()}>{c.level}<span className="class-arm">{c.arm}</span></a>
+                          <span className="class-tile-actions" onClick={(e) => e.stopPropagation()}>
                             <IconButton icon="trash" label={`Delete ${c.name}`} danger onClick={() => {
                               if (window.confirm(`Delete ${c.name}?`)) api.deleteClass(c.id).then(onChanged).catch((err) => setError(errorText(err)));
                             }} />

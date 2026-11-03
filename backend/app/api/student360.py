@@ -248,7 +248,7 @@ def profile(student_id: uuid.UUID, user: User = Depends(current_user), db: Sessi
         "student": {"id": str(s.id), "admission_no": s.admission_no, "first_name": s.first_name, "middle_name": s.middle_name, "last_name": s.last_name,
                     "full_name": s.full_name, "nickname": s.nickname, "gender": s.gender.value, "date_of_birth": s.date_of_birth.isoformat() if s.date_of_birth else None,
                     "age": (today.year - s.date_of_birth.year - ((today.month, today.day) < (s.date_of_birth.month, s.date_of_birth.day))) if s.date_of_birth else None,
-                    "boarding_status": s.boarding_status.value, "status": s.status.value, "photo": s.photo, "leadership": s.leadership, "talents": s.talents or [],
+                    "boarding_status": s.boarding_status.value, "status": s.status.value, "photo": s.photo, "has_thumb": bool(s.photo_thumb), "leadership": s.leadership, "talents": s.talents or [],
                     "class_id": str(s.class_id) if s.class_id else None, "house_id": str(s.house_id) if s.house_id else None, "branch_id": str(s.branch_id),
                     "school_id": str(s.school_id), "school_name": school.name, "school_colour": school.colour,
                     "birthday_in": birthday_in(s.date_of_birth, today)},
@@ -285,6 +285,14 @@ def profile(student_id: uuid.UUID, user: User = Depends(current_user), db: Sessi
     from app.api.family import note_out
     from app.models import FamilyNote
     out["from_home"] = [note_out(db, n) for n in db.scalars(select(FamilyNote).where(FamilyNote.student_id == s.id).order_by(FamilyNote.created_at.desc()).limit(8))]
+    out["timetable"] = None
+    try:
+        from app.api.timetable import World, grid_for
+        w = World(db, s.school_id)
+        if s.class_id and w.st.built_at:
+            out["timetable"] = grid_for(db, w, student=s)
+    except HTTPException:
+        pass
     out["completeness"] = completeness(s, fam, {d.kind for d in docs}, health) if a.full else None
     out["timeline"] = timeline(db, s, a, events, visits, incidents, passes, visitors, loans, books, cond, awards, notes)
     out["insights"] = insights(s, out, today)

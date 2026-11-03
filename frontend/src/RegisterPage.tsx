@@ -1,3 +1,4 @@
+import { StudentLink } from "./StudentLink";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api, errorText, longDate, registerPath, todayLocal,
@@ -197,7 +198,7 @@ export default function RegisterPage({
                   return (
                     <li key={s.id} className={m.status ? `is-${m.status}` : ""}>
                       <div className="reg-name">
-                        <span>{s.full_name}</span>
+                        <span><StudentLink id={s.id} name={s.full_name} /></span>
                         <span className="muted small">
                           {s.admission_no}
                           {kind === "night" && s.class_name ? ` · ${s.class_name}` : ""}

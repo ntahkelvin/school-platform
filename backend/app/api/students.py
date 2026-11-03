@@ -281,7 +281,24 @@ def update_student(
         events.append(("status", {"active": "Back on the roll", "graduated": "Graduated", "withdrawn": "Left the school"}[data.status.value]))
         if data.status != StudentStatus.active and not s.left_on:
             s.left_on = date.today()
+    left = data.status != StudentStatus.active and s.status == StudentStatus.active
+    back = data.status == StudentStatus.active and s.status != StudentStatus.active
+    becomes_day = data.boarding_status == BoardingStatus.day and s.boarding_status == BoardingStatus.boarder
     s.class_id, s.boarding_status, s.status = data.class_id, data.boarding_status, data.status
+    from app.api.family import student_login_active
+    from app.models import Bed, RouteRider
+    if left or becomes_day:
+        # A student who leaves, or stops boarding, gives up their bed.
+        bed = db.scalar(select(Bed).where(Bed.student_id == s.id))
+        if bed:
+            bed.student_id = None
+    if left:
+        for rr in db.scalars(select(RouteRider).where(RouteRider.student_id == s.id)):
+            db.delete(rr)
+        student_login_active(db, s, False)
+    if back:
+        s.left_on = None
+        student_login_active(db, s, True)
     for kind, text in events:
         db.add(StudentEvent(student_id=s.id, kind=kind, text=text, by_id=user.id))
     db.commit()

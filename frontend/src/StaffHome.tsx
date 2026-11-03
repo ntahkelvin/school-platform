@@ -246,7 +246,7 @@ function SchoolPortal({ s, me, reload }: { s: SchoolHome; me: Me; reload: () => 
               </div>
               <div className="row wrap">
                 <a className="button primary-link" href={href({ page: "register", kind: "school", id: c.id, date: today })}><Icon name="attendance" size={16} />{c.today.marked ? "Open register" : "Take register"}</a>
-                <button className="with-icon" onClick={() => setList({ id: c.id, title: `${c.name} class list` })}><Icon name="students" size={16} />Class list</button>
+                <a className="button with-icon" href={href({ page: "class", id: c.id })}><Icon name="students" size={16} />Open my class</a>
               </div>
             </section>
           );
@@ -277,7 +277,7 @@ function SchoolPortal({ s, me, reload }: { s: SchoolHome; me: Me; reload: () => 
                   <span className="subject-chip-icon"><Icon name={l.icon} size={15} stroke={2.2} /></span>
                   <strong className="grow">{name}</strong>
                   <div className="chips">
-                    {list.map((t) => <button key={t.slot_id} className="class-pill" onClick={() => setList({ id: t.class_id, title: `${t.class_name} ${name}` })}>{t.class_name}<span>{t.students}</span></button>)}
+                    {list.map((t) => <a key={t.slot_id} className="class-pill" href={href({ page: "class", id: t.class_id })}>{t.class_name}<span>{t.students}</span></a>)}
                   </div>
                 </div>
               );
@@ -376,14 +376,7 @@ function SchoolPortal({ s, me, reload }: { s: SchoolHome; me: Me; reload: () => 
         <MyLeaveCard schoolId={s.school_id} />
         {s.teaching && <MyNotesCard schoolId={s.school_id} returned={s.notes_returned} />}
 
-        <section className="card editor portal-card soon" style={hue("sky")}>
-          <div className="card-head"><h2 className="with-glyph"><Glyph icon="clock" hue="sky" size={34} />My timetable</h2></div>
-          <p className="small muted">Your periods for each day will show here once timetables are added (stage 4).</p>
-        </section>
-        {s.teaching && <section className="card editor portal-card soon" style={hue("green")}>
-          <div className="card-head"><h2 className="with-glyph"><Glyph icon="notebook" hue="green" size={34} />Scores and report cards</h2></div>
-          <p className="small muted">You'll enter CA and exam scores for your classes here (last stage).</p>
-        </section>}
+
       </div>
 
       {list && <ClassListModal classId={list.id} title={list.title} onClose={() => setList(null)} />}

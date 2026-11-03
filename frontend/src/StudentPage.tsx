@@ -17,6 +17,8 @@ import type { Insight } from "./growthApi";
 import { Avatar, Empty, Field, Glyph, hue, Modal, NewLoginNotice, Stat } from "./ui";
 import { IdCards, LeaveForm, Letter, makeThumb } from "./StudentYear";
 import { NoteList, type FamilyNote } from "./Family";
+import { NotYours } from "./ClassPage";
+import { WeekGrid, type Grid } from "./Timetable";
 import { SeenForm } from "./FamilyAdmin";
 
 // ---------- Types ----------
@@ -26,7 +28,7 @@ interface Guardian { link_id: string; user_id: string; name: string; relationshi
 interface Profile {
   access: { full: boolean; edit: boolean; teacher: boolean; health: boolean; safeguarding: boolean; why: string };
   student: { id: string; admission_no: string; first_name: string; middle_name: string | null; last_name: string; full_name: string; nickname: string | null; gender: string;
-    date_of_birth: string | null; age: number | null; boarding_status: string; status: string; photo: string | null; leadership: string | null; talents: string[];
+    date_of_birth: string | null; age: number | null; boarding_status: string; status: string; photo: string | null; has_thumb?: boolean; leadership: string | null; talents: string[];
     class_id: string | null; house_id: string | null; branch_id: string; school_id: string; school_name: string; school_colour: string | null; birthday_in: number | null };
   personal: Record<string, string | null | boolean> & { has_nin: boolean; has_support_needs: boolean };
   family: { guardians: Guardian[]; contacts: { id: string; name: string; phone: string | null; relationship: string; photo: string | null; note: string | null }[] };
@@ -50,6 +52,7 @@ interface Profile {
   timeline: { at: string; kind: string; icon: string; hue: string; title: string; detail: string }[];
   insights: Insight[];
   from_home: FamilyNote[];
+  timetable: Grid | null;
 }
 interface StuMeta { merits: Record<string, { label: string; points: number }>; demerits: Record<string, { label: string; points: number }>; documents: Record<string, string>; award_levels: Record<string, string> }
 
@@ -93,6 +96,10 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
   const load = useCallback(() => { sapi.profile(studentId).then(setP).catch((e) => setError(errorText(e))); }, [studentId]);
   useEffect(load, [load]);
   useEffect(() => { setTab("overview"); }, [studentId]);
+  // Older photos had no small copy for lists: make one the first time someone who can edit opens the profile.
+  useEffect(() => {
+    if (p && p.student.photo && !p.student.has_thumb && p.access.edit) void sapi.photo(p.student.id, p.student.photo).catch(() => {});
+  }, [p?.student.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const openEdit = async () => {
     try {
       const s = await api.student(studentId);
@@ -100,7 +107,7 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
       setDetail(s); setBranch(b); setClasses(c); setModal("edit");
     } catch (e) { setError(errorText(e)); }
   };
-  if (error) return <Layout me={me} onLogout={onLogout} crumbs={[{ label: "Home", href: "#/" }, { label: "Student" }]}><p className="error">{error}</p></Layout>;
+  if (error) return <Layout me={me} onLogout={onLogout} crumbs={[{ label: "Home", href: "#/" }, { label: "Student" }]}><NotYours text="This student isn't one of yours." /></Layout>;
   if (!p) return <Layout me={me} onLogout={onLogout} crumbs={[{ label: "Home", href: "#/" }]}><p className="muted">Loading…</p></Layout>;
   const s = p.student;
   const a = p.access;
@@ -128,7 +135,7 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
             <h1>{s.full_name}{s.nickname && <small> “{s.nickname}”</small>}</h1>
             <ul className="facts">
               <li style={hue("indigo")}><Icon name="id-card" size={15} /><span className="mono">{s.admission_no}</span></li>
-              {p.placement.class && <li style={hue("orange")}><Icon name="classes" size={15} />{p.placement.class.name}</li>}
+              {p.placement.class && <li style={hue("orange")}><Icon name="classes" size={15} /><a className="fact-link" href={href({ page: "class", id: p.placement.class.id })}>{p.placement.class.name}</a></li>}
               {p.placement.house && <li className="house-fact" style={{ ["--hc" as string]: p.placement.house.colour || "#888" }}><span className="house-dot" />{p.placement.house.name}</li>}
               <li style={hue("violet")}><Icon name={s.boarding_status === "boarder" ? "bed" : "home"} size={15} />{s.boarding_status === "boarder" ? `Boarder${p.placement.bed ? ` · ${p.placement.bed.hostel}, ${p.placement.bed.bed}` : ""}` : "Day student"}</li>
               {s.age != null && <li style={hue("teal")}><Icon name="sparkle" size={15} />{s.age} years{s.birthday_in != null && s.birthday_in <= 7 ? ` · birthday ${s.birthday_in === 0 ? "today 🎂" : `in ${s.birthday_in} days`}` : ""}</li>}
@@ -177,7 +184,7 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
 
       {modal === "edit" && detail && branch && (
         <Modal title="Edit student" onClose={() => setModal(null)}>
-          <StudentForm initial={detail} classes={classes} hasBoarding={branch.has_boarding} withGuardian={false} submitLabel="Save changes" onCancel={() => setModal(null)}
+          <StudentForm initial={detail} classes={classes} hasBoarding={branch.has_boarding} withGuardian={false} submitLabel="Save changes" hideStatus onCancel={() => setModal(null)}
             onSubmit={async (data) => { await api.updateStudent(detail.id, data); setModal(null); load(); }} />
         </Modal>
       )}
@@ -484,6 +491,12 @@ function SchoolLife({ p, onChange }: { p: Profile; onChange: (x: Profile) => voi
         {pl.clubs.length === 0 ? <p className="muted small">Not in a club yet.</p> : <ul className="collect-list">{pl.clubs.map((c) => <li key={c.id}><Glyph icon="star" hue="green" size={30} soft /><span className="grow"><strong>{c.name}</strong><small>{c.role}{c.patron ? ` · patron ${c.patron}` : ""}</small></span></li>)}</ul>}
         {p.student.talents.length > 0 && <div className="chips">{p.student.talents.map((t) => <span key={t} className="hue-chip" style={hue("pink")}>{t}</span>)}</div>}
       </section>
+      {p.timetable && (
+        <section className="card g-card wide tt-card" style={hue("blue")}>
+          <h3 className="with-glyph"><Glyph icon="calendar-days" hue="blue" size={30} />{p.student.first_name}'s week</h3>
+          <WeekGrid g={p.timetable} today={new Date().getDay() - 1} />
+        </section>
+      )}
       {clubs && <ClubsForm p={p} onClose={() => setClubs(false)} onDone={(x) => { onChange(x); setClubs(false); }} />}
     </div>
   );
@@ -539,7 +552,7 @@ function Attendance({ p }: { p: Profile }) {
         <h3 className="with-glyph"><Glyph icon="calendar" hue="green" size={30} />The last 6 weeks</h3>
         <div className="att-cal">
           <div className="att-row head">{["M", "T", "W", "T", "F", "S", "S"].map((d, i) => <span key={i}>{d}</span>)}</div>
-          {weeks.map((w, i) => <div key={i} className="att-row">{w.map((c) => <span key={c.date} className={`att-day s-${c.status ?? "none"}${c.night ? ` n-${c.night}` : ""}`} title={`${nice(c.date, { weekday: "short", day: "numeric", month: "short" })}: ${c.status ?? "no register"}${c.night ? `, night roll ${c.night}` : ""}`}>{day(c.date).getDate()}</span>)}</div>)}
+          {weeks.map((w, i) => <div key={i} className="att-row">{w.map((c) => <span key={c.date} style={day(c.date) > new Date() ? { opacity: 0.35 } : undefined} className={`att-day s-${c.status ?? "none"}${c.night ? ` n-${c.night}` : ""}`} title={`${nice(c.date, { weekday: "short", day: "numeric", month: "short" })}: ${c.status ?? "no register"}${c.night ? `, night roll ${c.night}` : ""}`}>{day(c.date).getDate()}</span>)}</div>)}
         </div>
         <p className="radar-key"><span className="key s-present" />Present<span className="key s-late" />Late<span className="key s-absent" />Absent<span className="key s-excused" />Excused</p>
       </section>

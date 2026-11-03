@@ -19,6 +19,7 @@ import { cache, isNetworkError } from "./offline";
 import { MeContext, opensSchool, stopSeeAs } from "./rightsApi";
 import { ChildPage, FamilyHomePage } from "./Family";
 import { ApplyPage } from "./Apply";
+import ClassPage from "./ClassPage";
 
 export default function App() {
   const [me, setMe] = useState<Me | null>(null);
@@ -77,6 +78,7 @@ export default function App() {
     if (route.page === "register") return <RegisterPage key={`${route.kind}${route.id}${route.date}`} {...common} kind={route.kind} id={route.id} date={route.date} />;
     // Any member of staff can open a student's profile; the server shows only what their link to the student allows.
     if (route.page === "student") return <StudentPage key={route.id} {...common} studentId={route.id} />;
+    if (route.page === "class") return <ClassPage key={route.id} {...common} classId={route.id} />;
     if (route.page === "board" && isBoard) return <BoardView {...common} />;
     if (route.page === "staff-record") return <StaffRecordPage key={route.id} {...common} schoolId={route.school} userId={route.id} />;
     if (route.page === "staff-cards") return <IdCardsPage key={`${route.school}${route.id}`} {...common} schoolId={route.school} userId={route.id} />;
@@ -98,6 +100,8 @@ export default function App() {
       return <RegisterPage key={`${route.kind}${route.id}${route.date}`} {...common} kind={route.kind} id={route.id} date={route.date} />;
     case "student":
       return <StudentPage key={route.id} {...common} studentId={route.id} />;
+    case "class":
+      return <ClassPage key={route.id} {...common} classId={route.id} />;
     case "staff":
       return <StaffHome {...common} />;
     case "staff-record":

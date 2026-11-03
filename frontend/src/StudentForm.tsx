@@ -59,6 +59,7 @@ export default function StudentForm({
   submitLabel,
   onSubmit,
   onCancel,
+  hideStatus = false,
 }: {
   classes: SchoolClass[];
   hasBoarding: boolean;
@@ -67,6 +68,7 @@ export default function StudentForm({
   submitLabel: string;
   onSubmit: (data: StudentInput & { status: StudentStatus }, guardian: GuardianInput | null) => Promise<void>;
   onCancel: () => void;
+  hideStatus?: boolean;
 }) {
   const [d, setD] = useState({
     first_name: initial?.first_name ?? "",
@@ -167,7 +169,8 @@ export default function StudentForm({
         <Field label="Admission number" hint={initial ? undefined : "Leave blank to create one automatically."}>
           <input value={d.admission_no} onChange={set("admission_no")} />
         </Field>
-        {initial && (
+        {initial && hideStatus && <p className="hint-line">To mark {initial.first_name} as left or graduated, use <b>Print and more → Leaving the school</b>. It also frees their bed and bus seat.</p>}
+        {initial && !hideStatus && (
           <Field label="Status">
             <select value={d.status} onChange={set("status")}>
               <option value="active">Active</option>
