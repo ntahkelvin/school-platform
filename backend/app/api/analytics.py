@@ -49,7 +49,7 @@ class Table:
     """Every approved mark of a term, as percentages: pct[(student, subject)], comp[(student, subject, test)]."""
 
     def __init__(self, db: Session, school: School, term: Term, subjects: set | None = None):
-        from app.api.assessment import columns_of, scheme_for
+        from app.api.assessment import absent_rule, columns_of, scheme_for, work_out
         self.term, self.school = term, school
         classes = list(db.scalars(select(SchoolClass).join(Branch, Branch.id == SchoolClass.branch_id).where(Branch.school_id == school.id)))
         self.classes = {c.id: c for c in classes}
@@ -92,24 +92,26 @@ class Table:
             raw[(r.student_id, r.subject_id)][r.component] = r.value
             if r.absent:
                 absent[(r.student_id, r.subject_id)].add(r.component)
-        self.pct, self.comp = {}, {}
+        self.pct, self.comp, self.item = {}, {}, {}
+        rule = absent_rule(db, school.id)
         for key, scope in self.scope_of.items():
             s = self.students[key[0]]
             sch, cols = self.schemes[s.class_id]
             ok = approved[scope] | ({c["name"] for c in sch} if scope in legacy else set())
-            got = mx = 0.0
+            if not ok or not (raw.get(key) or absent.get(key)):
+                continue
+            w = work_out(sch, raw.get(key, {}), absent.get(key, set()), rule)
+            got = wt = 0.0
             for c in sch:
-                if c["name"] not in ok:
+                if c["name"] not in ok or w["comp"].get(c["name"]) is None:
                     continue
-                keys = [x for x in cols if x["key"].split(" › ")[0] == c["name"]]
-                vals = [raw[key].get(x["key"]) for x in keys]
-                if all(v is None for v in vals) and not any(x["key"] in absent[key] for x in keys):
-                    continue
-                got_c = sum(v or 0 for v in vals)
-                got, mx = got + got_c, mx + c["max"]
-                self.comp[(key[0], key[1], c["name"])] = round(100 * got_c / c["max"], 1)
-            if mx:
-                self.pct[key] = round(100 * got / mx, 1)
+                self.comp[(key[0], key[1], c["name"])] = round(100 * w["comp"][c["name"]] / c["max"], 1)
+                for x in cols:
+                    if x["group"] == c["name"] and raw[key].get(x["key"]) is not None:
+                        self.item[(key[0], key[1], x["label"])] = round(100 * raw[key][x["key"]] / x["max"], 1)
+                got, wt = got + w["weights"][c["name"]] * w["comp"][c["name"]] / c["max"], wt + w["weights"][c["name"]]
+            if wt:
+                self.pct[key] = round(100 * got / wt, 1)
 
     def student_avg(self, sid) -> float | None:
         return avg(v for (s, _), v in self.pct.items() if s == sid)
@@ -258,8 +260,14 @@ def school_analysis(school_id: uuid.UUID, term_id: uuid.UUID | None = None, user
         cls = S[keys[0][0]].school_class
         sch = T.schemes[S[keys[0][0]].class_id][0]
         exam = next((c["name"] for c in sch if "exam" in c["name"].lower()), None)
-        ca = [T.comp.get((k[0], k[1], c["name"])) for k in keys for c in sch if c["name"] != exam]
-        ex = [T.comp.get((k[0], k[1], exam)) for k in keys] if exam else []
+        if exam:
+            ca = [T.comp.get((k[0], k[1], c["name"])) for k in keys for c in sch if c["name"] != exam]
+            ex = [T.comp.get((k[0], k[1], exam)) for k in keys]
+        else:                            # weighted blocks: the exam is one score inside a block
+            names = [p["name"] for c in sch for p in c["parts"]]
+            ex_names = [n for n in names if "exam" in n.lower()]
+            ca = [T.item.get((k[0], k[1], n)) for k in keys for n in names if n not in ex_names]
+            ex = [T.item.get((k[0], k[1], n)) for k in keys for n in ex_names]
         compared = [(books[k][key], raw[k].get(key)) for k in keys for key in books[k]]
         differ = sum(1 for a, b in compared if b is None or abs(a - b) > 0.01)
         cs = checks.get(scope, [])

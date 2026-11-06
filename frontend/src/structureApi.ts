@@ -39,6 +39,7 @@ export interface Scale {
   bands: Band[];
 }
 export interface Part {
+  weight?: number | null;
   name: string;
   max_score: number;
 }
@@ -47,11 +48,14 @@ export interface Component {
   max_score: number;
   parts: Part[];
 }
+export type SchemeMethod = "add" | "weighted";
 export interface Scheme {
   id: string;
   name: string;
+  method?: SchemeMethod;
   components: Component[];
 }
+export interface SchemePreset { method: SchemeMethod; components: Component[] }
 export interface Section {
   id: string;
   name: string;
@@ -127,12 +131,12 @@ export const structure = {
   saveScale: (id: string, name: string, bands: Band[]) => send<Scale>("PUT", `/api/grading-scales/${id}`, { name, bands }),
   deleteScale: (id: string) => send<void>("DELETE", `/api/grading-scales/${id}`),
 
-  assessmentPresets: () => get<Record<string, Component[]>>("/api/assessment-presets"),
+  assessmentPresets: () => get<Record<string, SchemePreset>>("/api/assessment-presets/all"),
   schemes: (schoolId: string) => get<Scheme[]>(`/api/schools/${schoolId}/assessment-schemes`),
-  addScheme: (schoolId: string, name: string, components: Component[]) =>
-    send<Scheme>("POST", `/api/schools/${schoolId}/assessment-schemes`, { name, components }),
-  saveScheme: (id: string, name: string, components: Component[]) =>
-    send<Scheme>("PUT", `/api/assessment-schemes/${id}`, { name, components }),
+  addScheme: (schoolId: string, name: string, components: Component[], method: SchemeMethod = "add") =>
+    send<Scheme>("POST", `/api/schools/${schoolId}/assessment-schemes`, { name, components, method }),
+  saveScheme: (id: string, name: string, components: Component[], method: SchemeMethod = "add") =>
+    send<Scheme>("PUT", `/api/assessment-schemes/${id}`, { name, components, method }),
   deleteScheme: (id: string) => send<void>("DELETE", `/api/assessment-schemes/${id}`),
 
   addStandardSections: (schoolId: string, names: string[]) =>

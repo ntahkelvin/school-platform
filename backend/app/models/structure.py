@@ -43,7 +43,7 @@ class GradeBand(IdMixin, Base):
     __tablename__ = "grade_bands"
 
     scale_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("grading_scales.id", ondelete="CASCADE"), index=True)
-    grade: Mapped[str] = mapped_column(String(10))
+    grade: Mapped[str] = mapped_column(String(20))
     min_score: Mapped[int] = mapped_column(Integer)
     max_score: Mapped[int] = mapped_column(Integer)
     remark: Mapped[str] = mapped_column(String(50), default="")
@@ -55,6 +55,10 @@ class AssessmentScheme(IdMixin, TimestampMixin, Base):
 
     school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(100))
+    # "add": parts add up to 100 (CA1 20 + CA2 20 + Exam 60).
+    # "weighted": blocks out of 100, each made of scores marked out of their own number and weighted within the block;
+    #             the term score is the average of the blocks (e.g. Block 1 = 20% CE1 + 20% CE2 + 60% CA1).
+    method: Mapped[str] = mapped_column(String(10), default="add", server_default="add")
     components: Mapped[list["AssessmentComponent"]] = relationship(
         cascade="all, delete-orphan", order_by="AssessmentComponent.position", lazy="selectin"
     )
@@ -68,7 +72,8 @@ class AssessmentComponent(IdMixin, Base):
     max_score: Mapped[int] = mapped_column(Integer)
     position: Mapped[int] = mapped_column(Integer, default=0)
     # Optional smaller pieces that make up this part, e.g. CA1 = test 10 + assignment 5 + classwork 5.
-    # Each is {"name": str, "max_score": int}; together they add up to max_score.
+    # Each is {"name": str, "max_score": int, "weight": float | None}. "add": max_scores add up to max_score.
+    # "weighted": max_score is what the score is marked out of, weight its % of the block.
     parts: Mapped[list[dict]] = mapped_column(JSON, default=list, server_default="[]")
 
 

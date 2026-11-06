@@ -45,8 +45,8 @@ export const loadRightsMeta = () => (metaCache ??= rightsApi.meta().catch((e) =>
 export const MeContext = createContext<Me | null>(null);
 export const useMe = () => useContext(MeContext);
 
-const ALL_OWNER = new Set(["school", "students", "attendance", "classes", "teaching", "results", "staff", "staff_day", "growth", "operations", "facilities", "setup", "logins", "rights", "library"]
-  .flatMap((a) => [`${a}.see`, `${a}.change`]).concat(["imports.change", "private.health", "private.safeguarding", "private.staff_pay", "power.see_as", "power.publish_results"]));
+const ALL_OWNER = new Set(["school", "students", "attendance", "classes", "teaching", "results", "discipline", "staff", "staff_day", "growth", "operations", "facilities", "setup", "logins", "rights", "library"]
+  .flatMap((a) => [`${a}.see`, `${a}.change`]).concat(["imports.change", "private.health", "private.safeguarding", "private.staff_pay", "power.see_as", "power.publish_results", "power.decide_discipline"]));
 export function rightsIn(me: Me | null, schoolId: string): Set<string> {
   if (!me) return new Set();
   const r = me.rights?.[schoolId];

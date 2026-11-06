@@ -9,7 +9,7 @@ import { loadRightsMeta, rightsApi, type Grant, type PersonRights, type RightsMe
 import { Avatar, Empty, Field, Glyph, hue, Modal } from "./ui";
 
 const AREA_TAB: Record<string, string> = {
-  school: "overview", students: "students", attendance: "attendance", classes: "classes", teaching: "teaching", results: "results", staff: "staff",
+  school: "overview", students: "students", attendance: "attendance", classes: "classes", teaching: "teaching", results: "results", discipline: "discipline", staff: "staff",
   staff_day: "staff-day", growth: "growth", operations: "operations", facilities: "facilities", setup: "sections", imports: "imports",
   logins: "logins", rights: "rights",
 };

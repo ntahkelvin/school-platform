@@ -16,6 +16,10 @@ export type Route =
   | { page: "verify"; code: string }
   | { page: "check" }
   | { page: "analysis"; id: string }
+  | { page: "probation"; id: string }
+  | { page: "probation-list"; id: string }
+  | { page: "discipline"; id: string }
+  | { page: "discipline-case"; id: string }
   | { page: "org"; id: string }
   | { page: "board" }
   | { page: "staff" }
@@ -31,10 +35,10 @@ const TABS: BranchTab[] = ["students", "classes", "staff", "attendance", "facili
 
 export type SchoolTab =
   | "overview" | "students" | "attendance" | "classes" | "staff" | "facilities"
-  | "sections" | "departments" | "houses" | "grading" | "calendar" | "policies" | "imports" | "logins" | "teaching" | "staff-day" | "growth" | "operations" | "rights" | "library" | "assets" | "admissions" | "timetable" | "results";
+  | "sections" | "departments" | "houses" | "grading" | "calendar" | "policies" | "imports" | "logins" | "teaching" | "staff-day" | "growth" | "operations" | "rights" | "library" | "assets" | "admissions" | "timetable" | "results" | "discipline";
 export const SCHOOL_TABS: SchoolTab[] = [
   "overview", "students", "attendance", "classes", "staff", "facilities",
-  "sections", "departments", "houses", "grading", "calendar", "policies", "imports", "logins", "teaching", "staff-day", "growth", "operations", "rights", "library", "assets", "admissions", "timetable", "results",
+  "sections", "departments", "houses", "grading", "calendar", "policies", "imports", "logins", "teaching", "staff-day", "growth", "operations", "rights", "library", "assets", "admissions", "timetable", "results", "discipline",
 ];
 
 export function parse(hash: string): Route {
@@ -53,6 +57,10 @@ export function parse(hash: string): Route {
   if (parts[0] === "verify" && parts[1]) return { page: "verify", code: parts[1] };
   if (parts[0] === "check") return { page: "check" };
   if (parts[0] === "analysis" && parts[1]) return { page: "analysis", id: parts[1] };
+  if (parts[0] === "probation" && parts[1]) return { page: "probation", id: parts[1] };
+  if (parts[0] === "probation-list" && parts[1]) return { page: "probation-list", id: parts[1] };
+  if (parts[0] === "discipline" && parts[1]) return { page: "discipline", id: parts[1] };
+  if (parts[0] === "discipline-case" && parts[1]) return { page: "discipline-case", id: parts[1] };
   if (parts[0] === "org" && parts[1]) return { page: "org", id: parts[1] };
   if (parts[0] === "board") return { page: "board" };
   if (parts[0] === "staff") return { page: "staff" };
@@ -97,6 +105,14 @@ export function href(route: Route): string {
       return "#/check";
     case "analysis":
       return `#/analysis/${route.id}`;
+    case "probation":
+      return `#/probation/${route.id}`;
+    case "probation-list":
+      return `#/probation-list/${route.id}`;
+    case "discipline":
+      return `#/discipline/${route.id}`;
+    case "discipline-case":
+      return `#/discipline-case/${route.id}`;
     case "org":
       return `#/org/${route.id}`;
     case "board":

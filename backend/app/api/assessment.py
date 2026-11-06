@@ -9,6 +9,7 @@ Who can do what
 - Students and parents see homework (students hand it in), marks and feedback, and report cards once published.
 """
 import random
+import re
 import secrets
 import uuid
 from collections import defaultdict
@@ -36,7 +37,8 @@ from app.models.people import StudentStatus
 
 router = APIRouter(prefix="/api", tags=["assessment"])
 
-DEFAULT_SCHEME = [{"name": "CA1", "max": 20, "parts": []}, {"name": "CA2", "max": 20, "parts": []}, {"name": "Exam", "max": 60, "parts": []}]
+DEFAULT_SCHEME = [{"name": "CA1", "max": 20, "parts": [], "method": "add"}, {"name": "CA2", "max": 20, "parts": [], "method": "add"},
+                  {"name": "Exam", "max": 60, "parts": [], "method": "add"}]
 DEFAULT_BANDS = [("A1", 75, 100, "Excellent"), ("B2", 70, 74, "Very good"), ("B3", 65, 69, "Good"), ("C4", 60, 64, "Credit"), ("C5", 55, 59, "Credit"),
                  ("C6", 50, 54, "Credit"), ("D7", 45, 49, "Pass"), ("E8", 40, 44, "Pass"), ("F9", 0, 39, "Fail")]
 TRAITS = {"Habits": ["Punctuality", "Neatness", "Politeness", "Honesty", "Self-control", "Relationship with others", "Attentiveness"],
@@ -84,7 +86,13 @@ def scheme_for(db: Session, school_id: uuid.UUID, level: str | None) -> list[dic
         sch = db.scalar(select(AssessmentScheme).where(AssessmentScheme.school_id == school_id).order_by(AssessmentScheme.created_at))
     if not sch or not sch.components:
         return DEFAULT_SCHEME
-    return [{"name": c.name, "max": c.max_score, "parts": [{"name": p["name"], "max": p["max_score"]} for p in (c.parts or [])]} for c in sch.components]
+    return [{"name": c.name, "max": c.max_score, "method": sch.method or "add",
+             "parts": [{"name": p["name"], "max": p["max_score"], "weight": p.get("weight")} for p in (c.parts or [])]} for c in sch.components]
+
+
+def absent_rule(db: Session, school_id: uuid.UUID) -> str:
+    from app.models import ResultSettings
+    return db.scalar(select(ResultSettings.absent_rule).where(ResultSettings.school_id == school_id)) or "substitute"
 
 
 def columns_of(scheme: list[dict]) -> list[dict]:
@@ -239,16 +247,82 @@ def sheet_status(db: Session, term: Term, key: str) -> SheetStatus | None:
     return db.scalar(select(SheetStatus).where(SheetStatus.term_id == term.id, SheetStatus.scope == key))
 
 
-def totals_for(scheme: list[dict], marks: dict) -> tuple[float | None, dict]:
-    """Total out of 100 and each component's total, from {column key: value}."""
-    comp, any_mark = {}, False
+def kind_of(name: str) -> str:
+    """What kind of score this is, so a missed one can borrow from its brother: CE1 and CE2 are both "ce", 1st CA and 2nd CA both "ca"."""
+    k = re.sub(r"\d+(st|nd|rd|th)?|[\s.\-_]", "", name.lower())
+    return k or name.lower()
+
+
+def items_of(scheme: list[dict]) -> list[dict]:
+    """Every score typed on the sheet, in order, with what it is out of and its weight in its block."""
+    out = []
     for c in scheme:
-        keys = [f"{c['name']} › {p['name']}" for p in c["parts"]] or [c["name"]]
-        vals = [marks.get(k) for k in keys]
-        if any(v is not None for v in vals):
-            any_mark = True
-        comp[c["name"]] = round(sum(v or 0 for v in vals), 1) if any(v is not None for v in vals) else None
-    return (round(sum(v or 0 for v in comp.values()), 1) if any_mark else None), comp
+        for p in c["parts"] or [None]:
+            if p:
+                out.append({"comp": c["name"], "key": f"{c['name']} › {p['name']}", "name": p["name"], "max": p["max"],
+                            "weight": p.get("weight") if c.get("method") == "weighted" and p.get("weight") is not None else p["max"]})
+            else:
+                out.append({"comp": c["name"], "key": c["name"], "name": c["name"], "max": c["max"], "weight": c["max"]})
+    return out
+
+
+def work_out(scheme: list[dict], marks: dict, absent=(), rule: str = "substitute") -> dict:
+    """The term score from the typed scores.
+
+    Each test (block) is worked out from its scores by weight: "add" schemes just add the marks (weights = marks),
+    "weighted" schemes use each score's % of the block (Block 1 = 20% CE1 + 20% CE2 + 60% CA1).
+    The term score is the weighted share of every test: CA1 + CA2 + Exam for "add", the average of the blocks for "weighted".
+    A missed test (absent) follows the school's rule: "substitute" borrows the nearest score of the same kind
+    (CE1 missed -> CE2, scaled to CE1's marks), "reweight" leaves it out, "zero" counts 0. With nothing to borrow it is left out.
+    Returns total (out of 100), comp {test: score out of its max}, subs {key: borrowed from}, excused [keys left out].
+    """
+    items = items_of(scheme)
+    absent = set(absent or ())
+    eff, subs, excused = {}, {}, set()
+    for i, it in enumerate(items):
+        k = it["key"]
+        if k not in absent:
+            eff[k] = marks.get(k)
+            continue
+        if rule == "zero":
+            eff[k] = 0
+            continue
+        if rule == "substitute":
+            kind = kind_of(it["name"])
+            near = sorted((j for j in range(len(items)) if j != i and kind_of(items[j]["name"]) == kind), key=lambda j: (abs(j - i), j > i))
+            for j in near:
+                o = items[j]
+                if o["key"] not in absent and marks.get(o["key"]) is not None:
+                    eff[k], subs[k] = round(marks[o["key"]] / o["max"] * it["max"], 1), o["key"]
+                    break
+        if k not in eff:
+            excused.add(k)
+            eff[k] = None
+    comp, weights, any_mark = {}, {}, False
+    for c in scheme:
+        its = [it for it in items if it["comp"] == c["name"]]
+        live = [it for it in its if it["key"] not in excused]
+        touched = any(eff.get(it["key"]) is not None or it["key"] in absent for it in its)
+        any_mark = any_mark or touched
+        if not touched or not live:
+            comp[c["name"]] = None
+            if live:                       # not marked yet: counts as nothing for now
+                weights[c["name"]] = c["max"]
+            continue
+        w = sum(it["weight"] for it in live) or 1
+        comp[c["name"]] = round(c["max"] * sum(it["weight"] * (eff.get(it["key"]) or 0) / it["max"] for it in live) / w, 1)
+        weights[c["name"]] = c["max"]
+    if not any_mark:
+        return {"total": None, "comp": comp, "subs": subs, "excused": sorted(excused), "weights": weights}
+    wt = sum(weights.values())
+    total = round(100 * sum(weights[n] * (comp[n] or 0) / next(c["max"] for c in scheme if c["name"] == n) for n in weights) / wt, 1) if wt else None
+    return {"total": total, "comp": comp, "subs": subs, "excused": sorted(excused), "weights": weights}
+
+
+def totals_for(scheme: list[dict], marks: dict, absent=(), rule: str = "substitute") -> tuple[float | None, dict]:
+    """Total out of 100 and each component's score, from {column key: value}."""
+    r = work_out(scheme, marks, absent, rule)
+    return r["total"], r["comp"]
 
 
 def peer_averages(db: Session, sc: Scope, term: Term, comp: str, cols: list[dict]) -> list[dict]:
@@ -285,9 +359,11 @@ def sheet(db: Session, sc: Scope, term: Term, user: User, check: bool = False) -
             absent[r.student_id][r.component] = True
     steps = sheet_steps(db, sc, term, user, scheme, {s.id: s.class_id for s in studs})
     rel = releases(db, term.id)
+    rule = absent_rule(db, sc.school.id)
     rows, totals = [], {}
     for s in studs:
-        total, comp = totals_for(scheme, marks[s.id])
+        w = work_out(scheme, marks[s.id], absent[s.id], rule)
+        total, comp = w["total"], w["comp"]
         totals[s.id] = total
         # A grade only means something once every test is in (CA1 alone would read as F9).
         g, remark = grade_of(total, bands) if all(v is not None or any(k.startswith(n) for k in absent[s.id]) for n, v in comp.items()) else (None, None)
@@ -295,6 +371,7 @@ def sheet(db: Session, sc: Scope, term: Term, user: User, check: bool = False) -
         rows.append({"id": str(s.id), "name": f"{s.last_name}, {s.first_name}", "first_name": s.first_name, "admission_no": s.admission_no, "thumb": s.photo_thumb,
                      "class_name": s.school_class.name if s.school_class else None,
                      "marks": {k: v for k, v in marks[s.id].items()}, "absent": list(absent[s.id]), "components": comp, "total": total, "grade": g, "remark": remark, "filled": filled,
+                     "borrowed": w["subs"], "excused": w["excused"],
                      "locked": [c["name"] for c in scheme if (s.class_id, c["name"]) in rel and rel[(s.class_id, c["name"])].locked]})
     pos = rank({r["id"]: r["total"] for r in rows})
     from app.api.scorebook import sheet_checks
@@ -314,7 +391,7 @@ def sheet(db: Session, sc: Scope, term: Term, user: User, check: bool = False) -
     return {
         "scope": sc.key, "title": sc.title(), "subject": {"id": str(sc.subject.id), "name": sc.subject.name}, "group": sc.name, "level": sc.level,
         "class_id": str(sc.cls.id) if sc.cls else None, "school_id": str(sc.school.id), "teacher": name_of(db, sc.teacher_id), "teacher_id": str(sc.teacher_id) if sc.teacher_id else None,
-        "term": term_out(term), "scheme": scheme, "columns": cols, "bands": [{"grade": g, "min": lo, "max": hi, "remark": rm} for g, lo, hi, rm in bands],
+        "term": term_out(term), "scheme": scheme, "columns": cols, "method": scheme[0].get("method", "add") if scheme else "add", "absent_rule": rule, "bands": [{"grade": g, "min": lo, "max": hi, "remark": rm} for g, lo, hi, rm in bands],
         "students": rows, "steps": steps, "queries": queries, "status": "approved" if all(x["status"] == "approved" for x in steps.values()) else "open",
         "can_edit": any(x["can_type"] for x in steps.values()), "is_teacher": sc.teacher_id == user.id, "is_authority": authority(db, user, sc.school),
         "stats": {"average": round(sum(got) / len(got), 1) if got else None, "highest": max(got) if got else None, "lowest": min(got) if got else None,
@@ -415,6 +492,8 @@ def put_marks(scope: str, data: MarksIn, user: User = Depends(current_user), db:
     steps = sheet_steps(db, sc, term, user, scheme_for(db, sc.school.id, sc.level), studs)
     rel = releases(db, term.id)
     for m in data.marks:
+        if m.value is not None and abs(m.value - 0.1) < 1e-9:    # the old paper habit: 0.1 means "missed the test"
+            m.value, m.absent = None, True
         st = steps.get(comp_of(m.key))
         if not st:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"There is no column called {m.key}")
@@ -722,7 +801,18 @@ def scope_statuses(db: Session, term: Term, keys: list[str], comps: list[str]) -
     return {k: "submitted" if all(step_status(get_step(db, term.id, k, c)) == "approved" for c in comps) else "open" for k in keys}
 
 
-def compute_class(db: Session, c: SchoolClass, term: Term) -> dict:
+def award_for(average: float | None, place: str | None, awards: list[dict]) -> str | None:
+    """The best award a term average earns: [{"name": "Honours", "min": 88.5, "top": 10}, ...] (best first)."""
+    if average is None:
+        return None
+    n = int(re.sub(r"\D", "", place)) if place and re.sub(r"\D", "", place) else None
+    for a in sorted(awards or [], key=lambda a: -(a.get("min") or 0)):
+        if average >= (a.get("min") or 0) and (not a.get("top") or (n is not None and n <= a["top"])):
+            return a["name"]
+    return None
+
+
+def compute_class(db: Session, c: SchoolClass, term: Term, with_level: bool = True) -> dict:
     """Every number on the broadsheet and on each report card for one class and term."""
     school = school_of_class(db, c)
     scheme = scheme_for(db, school.id, c.level)
@@ -740,14 +830,18 @@ def compute_class(db: Session, c: SchoolClass, term: Term) -> dict:
             if comp.get(sub.id) or sub.id in elect[s.id]:
                 takes[s.id].add(sub.id)
     marks: dict = defaultdict(lambda: defaultdict(dict))
+    gone: dict = defaultdict(lambda: defaultdict(set))
     for r in db.scalars(select(Score).where(Score.term_id == term.id, Score.student_id.in_(ids or [uuid.uuid4()]))):
         marks[r.student_id][r.subject_id][r.component] = r.value
+        if r.absent:
+            gone[r.student_id][r.subject_id].add(r.component)
+    rule = absent_rule(db, school.id)
     per: dict = defaultdict(dict)                    # per[student][subject] = {total, comps, grade, remark}
     for s in studs:
         for sub, _ in subjects:
             if sub.id not in takes[s.id]:
                 continue
-            total, comps = totals_for(scheme, marks[s.id][sub.id])
+            total, comps = totals_for(scheme, marks[s.id][sub.id], gone[s.id][sub.id], rule)
             g, rm = grade_of(total, bands)
             per[s.id][sub.id] = {"total": total, "components": comps, "grade": g, "remark": rm}
     sub_stats, sub_pos = {}, {}
@@ -764,8 +858,24 @@ def compute_class(db: Session, c: SchoolClass, term: Term) -> dict:
     pos = rank({s.id: summary[s.id]["average"] for s in studs})
     avgs = [x["average"] for x in summary.values() if x["average"] is not None]
     statuses = scope_statuses(db, term, [k for _, ks in subjects for k in ks], [x["name"] for x in scheme])
+    # The whole year group (every arm of the level): position across arms and awards (Honours, Merits...).
+    from app.api.checks import settings as result_settings
+    stg = result_settings(db, school.id)
+    level_avgs = {s.id: summary[s.id]["average"] for s in studs}
+    arms = [c.name]
+    if with_level and c.level:
+        for o in db.scalars(select(SchoolClass).where(SchoolClass.branch_id == c.branch_id, SchoolClass.level == c.level, SchoolClass.id != c.id).order_by(SchoolClass.arm)):
+            od = compute_class(db, o, term, with_level=False)
+            if od["students"]:
+                arms.append(o.name)
+                level_avgs.update({s.id: od["summary"][s.id]["average"] for s in od["students"]})
+    level_pos = rank(level_avgs)
+    level_size = len(level_avgs)
+    shown = level_pos if (stg.rank_by or "class") == "level" else pos
+    awards = {s.id: award_for(summary[s.id]["average"], level_pos.get(s.id), stg.awards or []) for s in studs}
     return {"school": school, "scheme": scheme, "bands": bands, "students": studs, "subjects": subjects, "per": per, "sub_stats": sub_stats, "sub_pos": sub_pos,
-            "summary": summary, "position": pos, "statuses": statuses,
+            "summary": summary, "position": shown, "class_position": pos, "level_position": level_pos, "level_size": level_size, "arms": sorted(arms),
+            "rank_by": stg.rank_by or "class", "awards": awards, "award_list": stg.awards or [], "statuses": statuses,
             "class_stats": {"average": round(sum(avgs) / len(avgs), 1) if avgs else None, "highest": max(avgs) if avgs else None, "lowest": min(avgs) if avgs else None, "size": len(studs)}}
 
 
@@ -801,12 +911,15 @@ def broadsheet(class_id: uuid.UUID, term_id: uuid.UUID | None = None, user: User
         rc = cards.get(s.id)
         rows.append({"id": str(s.id), "name": f"{s.last_name}, {s.first_name}", "first_name": s.first_name, "thumb": s.photo_thumb, "gender": s.gender.value if s.gender else None,
                      "scores": {str(k): {"total": v["total"], "grade": v["grade"]} for k, v in d["per"][s.id].items()},
-                     **d["summary"][s.id], "position": d["position"].get(s.id),
+                     **d["summary"][s.id], "position": d["position"].get(s.id), "class_position": d["class_position"].get(s.id),
+                     "level_position": d["level_position"].get(s.id), "award": d["awards"].get(s.id),
                      "card": {"status": rc.status, "comment": bool(rc.teacher_comment), "principal": bool(rc.principal_comment), "traits": len(rc.traits or {}),
                               "seen": bool(rc.seen_at)} if rc else None})
     ready = sum(1 for x in subjects if x["status"] == "submitted")
     return {"class": {"id": str(c.id), "name": c.name, "level": c.level, "form_teacher": name_of(db, c.form_teacher_id)}, "school": {"id": str(school.id), "name": school.name},
             "term": term_out(term), "subjects": subjects, "students": rows, "stats": d["class_stats"], "sheets_in": ready, "can_manage": manage,
+            "rank_by": d["rank_by"], "level_size": d["level_size"], "arms": d["arms"], "award_list": d["award_list"],
+            "award_counts": {a["name"]: sum(1 for r in rows if r["award"] == a["name"]) for a in d["award_list"]},
             "can_publish": __import__("app.api.checks", fromlist=["authority"]).authority(db, user, school),
             "is_form_teacher": c.form_teacher_id == user.id, "published": sum(1 for r in rows if r["card"] and r["card"]["status"] == "published"),
             "traits": TRAITS, "bands": [{"grade": g, "min": lo, "max": hi, "remark": rm} for g, lo, hi, rm in d["bands"]]}
@@ -868,7 +981,11 @@ def card_data(db: Session, s: Student, term: Term, d: dict, rc: ReportCard | Non
                  "next_starts_on": next_term_start(db, term)},
         "scheme": [{"name": x["name"], "max": x["max"]} for x in d["scheme"]],
         "subjects": subjects,
-        "summary": {**sm, "position": d["position"].get(s.id), "out_of": d["class_stats"]["size"], "class_average": d["class_stats"]["average"], "grade": g, "remark": rm,
+        "summary": {**sm, "position": d["position"].get(s.id), "out_of": d["level_size"] if d["rank_by"] == "level" else d["class_stats"]["size"],
+                    "position_in": (c.level if d["rank_by"] == "level" and c else (c.name if c else None)),
+                    "class_position": d["class_position"].get(s.id), "class_size": d["class_stats"]["size"],
+                    "level_position": d["level_position"].get(s.id), "level_size": d["level_size"], "award": d["awards"].get(s.id),
+                    "class_average": d["class_stats"]["average"], "grade": g, "remark": rm,
                     "best": max(subjects, key=lambda x: x["total"] or 0)["subject"] if subjects else None, "merit_points": int(pts),
                     "earlier": [{"term": e["term"], "average": e["average"]} for e in early],
                     "cumulative": round(sum(prev_avgs + [sm["average"]]) / (len(prev_avgs) + 1), 1) if early and sm["average"] is not None else None},
@@ -1021,9 +1138,12 @@ def publish(class_id: uuid.UUID, data: PublishIn, user: User = Depends(current_u
         rc.code = rc.code or secrets.token_hex(4).upper()
         rc.snapshot["code"] = rc.code
         sm = d["summary"][s.id]
-        notify(db, family_of(s), school.id, f"{s.first_name}'s {term.name} report card is ready: average {sm['average']}%" + (f", {d['position'][s.id]} in {c.name}" if d['position'].get(s.id) else "") + ".",
+        notify(db, family_of(s), school.id, f"{s.first_name}'s {term.name} report card is ready: average {sm['average']}%" + (f", {d['position'][s.id]} in {c.level if d['rank_by'] == 'level' and c.level else c.name}" if d['position'].get(s.id) else "") + ".",
                f"#/child/{s.id}", "award")
         n += 1
+    db.flush()
+    from app.api.probation import safe_scan
+    safe_scan(db, school, term, {c.id}, "report cards published")
     db.commit()
     return {"published": n}
 

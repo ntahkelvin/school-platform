@@ -97,6 +97,14 @@ class ResultSettings(IdMixin, TimestampMixin, Base):
     school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"), unique=True)
     checks: Mapped[int] = mapped_column(Integer, default=1)                     # 1: unit head (or HOD if none). 2: unit head, then HOD
     confirm_days: Mapped[int] = mapped_column(Integer, default=5)               # school days students have to confirm or query
+    # A missed test (ABS, or 0.1 typed): "substitute" uses the nearest score of the same kind (CE1 <- CE2), else leaves it out;
+    # "reweight" leaves it out and shares its weight among the rest; "zero" counts it as 0.
+    absent_rule: Mapped[str] = mapped_column(String(12), default="substitute", server_default="substitute")
+    rank_by: Mapped[str] = mapped_column(String(8), default="class", server_default="class")      # "class" or "level" (all arms of a year)
+    # Awards by term average, best first: [{"name": "Honours", "min": 88.5, "top": null}, {"name": "Merits", "min": 85}]
+    awards: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    # When a student goes on probation: {"line": 50, "fails": 3, "drop": 10}
+    probation: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
 
 
 class AssessmentWindow(IdMixin, TimestampMixin, Base):
@@ -186,4 +194,28 @@ class ScoreCheck(IdMixin, TimestampMixin, Base):
     query_photo: Mapped[str | None] = mapped_column(Text)
     reply: Mapped[str | None] = mapped_column(String(600))
     answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    history: Mapped[list] = mapped_column(JSON, default=list)
+
+
+class ProbationCase(IdMixin, TimestampMixin, Base):
+    """A student whose results show they are failing, and the plan everyone follows to help them."""
+    __tablename__ = "probation_cases"
+    __table_args__ = (UniqueConstraint("term_id", "student_id", name="uq_probation_case"),)
+
+    school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"), index=True)
+    term_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("terms.id", ondelete="CASCADE"), index=True)
+    student_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(12), default="open")    # open, plan, review, improved, closed
+    average: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reasons: Mapped[list] = mapped_column(JSON, default=list)            # ["Average 46% is below 50%", ...]
+    weak: Mapped[list] = mapped_column(JSON, default=list)               # [{"subject_id", "subject", "pct"}]
+    team: Mapped[list] = mapped_column(JSON, default=list)               # [{"id", "name", "role"}] everyone told and helping
+    family_told: Mapped[bool] = mapped_column(Boolean, default=False)    # only once the marks behind it are published
+    plan: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actions: Mapped[list] = mapped_column(JSON, default=list)            # [{"id", "what", "who", "due", "done"}]
+    meetings: Mapped[list] = mapped_column(JSON, default=list)           # [{"id", "on", "with", "notes", "by"}]
+    review_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    parent_ack_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    parent_ack_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    parent_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     history: Mapped[list] = mapped_column(JSON, default=list)

@@ -14,7 +14,7 @@ from app.models.structure import (
 )
 from app.models.staff import EmploymentType, StaffDocument, StaffProfile, StaffQualification
 from app.models.growth import Appraisal, CpdRecord, GrowthSettings, Kudos, Mentoring, Observation, Pulse, Strength
-from app.models.ops import ClinicVisit, DeskMember, GatePass, Incident, MedicineStock, StudentHealth, Ticket, Visitor
+from app.models.ops import ClinicVisit, DeskMember, DisciplineCase, DisciplineSettings, GatePass, Incident, MedicineStock, StudentHealth, Ticket, Visitor
 from app.models.logistics import (
     BusRegister, BusRoute, FuelLog, KitchenSettings, MealPlan, MealService, RouteRider, StockItem, StockMove, Trip, VehicleCheck, VehicleService,
 )
@@ -26,11 +26,11 @@ from app.models.staffday import DutyAssignment, LeaveRequest, LessonNote, StaffA
 from app.models.tenancy import Branch, School, SchoolGroup, SchoolType
 from app.models.users import Membership, Role, User
 
-from app.models.assessment import (AssessmentWindow, Assignment, ComponentRelease, ReportCard, ResultSettings, Score, ScoreBookEntry, ScoreCheck, SheetStatus, SheetStep, Submission,
+from app.models.assessment import (AssessmentWindow, Assignment, ComponentRelease, ProbationCase, ReportCard, ResultSettings, Score, ScoreBookEntry, ScoreCheck, SheetStatus, SheetStep, Submission,
                                    WindowOpening)
 
 __all__ = [
-    "Assignment", "ReportCard", "Score", "SheetStatus", "Submission", "AssessmentWindow", "ComponentRelease", "ResultSettings", "SheetStep", "WindowOpening", "ScoreBookEntry", "ScoreCheck",
+    "Assignment", "ReportCard", "Score", "SheetStatus", "Submission", "AssessmentWindow", "ComponentRelease", "ResultSettings", "SheetStep", "WindowOpening", "ScoreBookEntry", "ScoreCheck", "ProbationCase",
     "Board", "BoardMember",
     "AssessmentComponent", "AssessmentScheme", "Bed", "Club", "ClubKind", "Department", "DepartmentKind",
     "EventCategory", "Facility", "FacilityKind", "GradeBand", "GradingScale", "Hostel", "HostelGender", "HostelRoom",
@@ -43,7 +43,7 @@ __all__ = [
     "EmploymentType", "StaffDocument", "StaffProfile", "StaffQualification",
     "DutyAssignment", "LeaveRequest", "LessonNote", "StaffAttendance", "StaffDaySettings",
     "Appraisal", "CpdRecord", "GrowthSettings", "Kudos", "Mentoring", "Observation", "Pulse", "Strength",
-    "ClinicVisit", "DeskMember", "GatePass", "Incident", "MedicineStock", "StudentHealth", "Ticket", "Visitor",
+    "ClinicVisit", "DeskMember", "DisciplineCase", "DisciplineSettings", "GatePass", "Incident", "MedicineStock", "StudentHealth", "Ticket", "Visitor",
     "BusRegister", "BusRoute", "FuelLog", "KitchenSettings", "MealPlan", "MealService", "RouteRider", "StockItem", "StockMove", "Trip",
     "VehicleCheck", "VehicleService",
     "AccessGrant", "AuditEntry", "Notice", "RightSetting",

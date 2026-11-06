@@ -16,7 +16,7 @@ interface HeadQuery { id: string; scope: string; title: string; subject: string;
 interface Cell { sheets: number; draft: number; submitted: number; returned: number; approved: number; ready: boolean; approved_all: boolean;
   students_check: { students: number; done: number; open_queries: number; to_confirm: number; due_at: string | null } | null; published: boolean; locked: boolean; release_id: string | null; published_at: string | null }
 interface Control {
-  term: { id: string; name: string; session: string; terms: { id: string; name: string }[] }; settings: { checks: number; confirm_days: number };
+  term: { id: string; name: string; session: string; terms: { id: string; name: string }[] }; settings: ResultRules;
   components: { component: string; closes_at: string | null; closed: boolean; openings: { id: string; teacher: string; teacher_id: string | null; until: string; reason: string | null; by: string | null }[] }[];
   classes: { id: string; name: string; level: string; students: number; tests: Record<string, Cell> }[]; can_publish: boolean; teachers: { id: string; name: string }[];
 }
@@ -192,6 +192,52 @@ function alertSoft(text: string) {
   window.setTimeout(() => el.remove(), 3200);
 }
 
+export interface Award { name: string; min: number; top?: number | null }
+export interface ResultRules { checks: number; confirm_days: number; absent_rule: "substitute" | "reweight" | "zero"; rank_by: "class" | "level"; awards: Award[];
+  probation: { line: number; fails: number; drop: number } }
+
+const ABSENT_RULES: [ResultRules["absent_rule"], string, string][] = [
+  ["substitute", "Use the next score of the same kind", "CE1 missed → uses CE2 (or the one before). If there is none, it is left out."],
+  ["reweight", "Leave it out", "The other scores in the block count more."],
+  ["zero", "Count it as 0", "Not recommended: a child who was ill gets punished."],
+];
+
+function AwardsBox({ d, busy, onSave }: { d: Control; busy: boolean; onSave: (a: Award[]) => void }) {
+  const [rows, setRows] = useState<{ name: string; min: string; top: string }[]>(d.settings.awards.map((a) => ({ name: a.name, min: String(a.min), top: a.top ? String(a.top) : "" })));
+  const ok = rows.every((r) => r.name.trim().length >= 2 && r.min !== "" && !Number.isNaN(Number(r.min)));
+  return (
+    <div className="pb-awards">
+      {rows.map((r, i) => (
+        <div key={i} className="row wrap pb-award">
+          <input aria-label="Award name" value={r.name} placeholder="e.g. Honours" onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+          <label className="pct-input">from <input aria-label={`${r.name} lowest average`} inputMode="decimal" value={r.min} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, min: e.target.value } : x)))} />%</label>
+          <label className="pct-input">only top <input aria-label={`${r.name} only the top`} inputMode="numeric" value={r.top} placeholder="any" onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, top: e.target.value } : x)))} /></label>
+          <button type="button" className="ghost" aria-label={`Remove ${r.name}`} disabled={!d.can_publish} onClick={() => setRows(rows.filter((_, j) => j !== i))}>✕</button>
+        </div>
+      ))}
+      <div className="row wrap">
+        <button type="button" className="ghost small" disabled={!d.can_publish || rows.length >= 6} onClick={() => setRows([...rows, { name: rows.length ? "Merits" : "Honours", min: "", top: "" }])}>+ Add an award</button>
+        <span className="grow" />
+        <button type="button" className="primary small" disabled={!d.can_publish || busy || !ok} onClick={() => onSave(rows.map((r) => ({ name: r.name.trim(), min: Number(r.min), top: r.top ? Number(r.top) : null })))}>Save awards</button>
+      </div>
+    </div>
+  );
+}
+
+function ProbationBox({ d, busy, onSave }: { d: Control; busy: boolean; onSave: (p: ResultRules["probation"]) => void }) {
+  const [p, setP] = useState({ line: String(d.settings.probation.line), fails: String(d.settings.probation.fails), drop: String(d.settings.probation.drop) });
+  const ok = Object.values(p).every((v) => v !== "" && !Number.isNaN(Number(v)));
+  return (
+    <div className="pb-rules">
+      <label>Average below <span className="pct-input"><input aria-label="Probation line" inputMode="decimal" value={p.line} onChange={(e) => setP({ ...p, line: e.target.value })} />%</span></label>
+      <label>or failing <span className="pct-input"><input aria-label="Failed subjects" inputMode="numeric" value={p.fails} onChange={(e) => setP({ ...p, fails: e.target.value })} /> subjects</span></label>
+      <label>or dropping <span className="pct-input"><input aria-label="Drop since last term" inputMode="decimal" value={p.drop} onChange={(e) => setP({ ...p, drop: e.target.value })} /> points since last term</span></label>
+      <small className="muted block">0 switches a rule off. Checked every time a test is approved or published.</small>
+      <button type="button" className="primary small" disabled={!d.can_publish || busy || !ok} onClick={() => onSave({ line: Number(p.line), fails: Number(p.fails), drop: Number(p.drop) })}>Save probation rules</button>
+    </div>
+  );
+}
+
 function SettingsCard({ schoolId, d, onDone }: { schoolId: string; d: Control; onDone: () => void }) {
   const [busy, error, run] = useBusy();
   const save = (b: Partial<Control["settings"]>) => run(async () => { await capi.settings(schoolId, { ...d.settings, ...b }); onDone(); });
@@ -205,6 +251,18 @@ function SettingsCard({ schoolId, d, onDone }: { schoolId: string; d: Control; o
             <button className={d.settings.checks === 2 ? "on" : ""} disabled={!d.can_publish || busy} onClick={() => save({ checks: 2 })}>Two: unit head, then HOD</button></div></div>
         <div><b>Days students have to confirm</b><small className="muted block">From approval, students check marks against their scripts. After this, marks they didn't query count as accepted.</small>
           <select value={d.settings.confirm_days} disabled={!d.can_publish || busy} onChange={(e) => save({ confirm_days: +e.target.value })}>{[2, 3, 4, 5, 7, 10, 14].map((n) => <option key={n} value={n}>{n} school days</option>)}</select></div>
+        <div><b>A missed test (ABS or 0.1)</b><small className="muted block">A child who misses a test that is not their fault should not get 0.</small>
+          <div className="pb-choices">{ABSENT_RULES.map(([k, t, n]) => (
+            <button key={k} className={`pb-choice${d.settings.absent_rule === k ? " on" : ""}`} disabled={!d.can_publish || busy} onClick={() => save({ absent_rule: k })}>
+              <b>{t}</b><small>{n}</small></button>))}</div></div>
+        <div><b>Position on report cards</b><small className="muted block">In the class only, or across every arm of the year (JSS 2A, 2B, 2C… together, e.g. “46th of 100”).</small>
+          <div className="segmented">
+            <button className={d.settings.rank_by === "class" ? "on" : ""} disabled={!d.can_publish || busy} onClick={() => save({ rank_by: "class" })}>In the class</button>
+            <button className={d.settings.rank_by === "level" ? "on" : ""} disabled={!d.can_publish || busy} onClick={() => save({ rank_by: "level" })}>Whole year group</button></div></div>
+        <div><b>Awards (Honours, Merits…)</b><small className="muted block">By term average, best first. “Only top” limits it to the best N in the year group.</small>
+          <AwardsBox d={d} busy={busy} onSave={(awards) => save({ awards })} /></div>
+        <div><b>Probation</b><small className="muted block">A student goes on probation, and everyone who can help is told, when:</small>
+          <ProbationBox d={d} busy={busy} onSave={(probation) => save({ probation })} /></div>
       </div>
       {error && <p className="error">{error}</p>}
     </section>

@@ -1,6 +1,8 @@
 // The family portal: parents see their own children, students see themselves. Phone first: most parents will use a phone.
 import RecordPage from "./Records";
 import { HomeworkPage, ResultsList } from "./Assessment";
+import { FamilyProbation } from "./Probation";
+import { FamilyDiscipline, TipBox } from "./Discipline";
 import MyScoresPage from "./MyScores";
 import { useEffect, useMemo, useState } from "react";
 import { api, errorText, type Me } from "./api";
@@ -282,7 +284,7 @@ export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; o
   const [c, setC] = useState<ChildView | null>(null);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<Tab>("overview");
-  const [modal, setModal] = useState<null | "tell" | "exeat" | "card" | "password">(null);
+  const [modal, setModal] = useState<null | "tell" | "exeat" | "card" | "password" | "pod">(null);
   const [x, setX] = useState<Extras | null>(null);
   const loadX = () => spapi.extras(studentId).then(setX).catch(() => {});
   const load = () => { void loadX(); return fam.child(studentId).then(setC).catch((e) => setError(errorText(e))); };
@@ -312,6 +314,7 @@ export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; o
             {!self && s.boarder && !c.open_pass && <button className="on-band" onClick={() => setModal("exeat")}><Icon name="home" size={14} />Ask to bring home</button>}
             {self && x && <button className="on-band" onClick={() => setModal("card")}><Icon name="id-card" size={14} />My ID card</button>}
             {self && <button className="on-band" onClick={() => setModal("password")}><Icon name="key" size={14} />Password</button>}
+            {self && <button className="on-band" onClick={() => setModal("pod")}><Icon name="gavel" size={14} />Tell the POD</button>}
           </div>
         </div>
         <div className="stu-body">
@@ -336,10 +339,12 @@ export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; o
 
       <div className="stu-main">
         {tab === "overview" && x && <DayExtras x={x} go={(t) => setTab(t as Tab)} />}
+        {tab === "overview" && <FamilyProbation studentId={s.id} />}
+        {tab === "overview" && <FamilyDiscipline studentId={s.id} />}
         {tab === "overview" && <Overview c={c} go={setTab} />}
         {tab === "homework" && <HomeworkPage studentId={s.id} self={self} />}
         {tab === "myscores" && <MyScoresPage studentId={s.id} />}
-        {tab === "results" && <ResultsList studentId={s.id} self={self} />}
+        {tab === "results" && <><FamilyProbation studentId={s.id} /><ResultsList studentId={s.id} self={self} /></>}
         {tab === "record" && <RecordPage studentId={s.id} who={self ? "self" : "parent"} />}
         {tab === "goals" && x && <GoalsPage x={x} reload={() => void loadX()} />}
         {tab === "badges" && x && <BadgesPage x={x} />}
@@ -357,6 +362,7 @@ export function ChildPage({ me, onLogout, studentId, home = false }: { me: Me; o
       {modal === "tell" && <TellSchool childId={s.id} name={s.first_name} kinds={c.note_kinds} onClose={() => setModal(null)} onDone={() => { setModal(null); void load(); }} />}
       {modal === "card" && x && <MyCard x={x} onClose={() => setModal(null)} />}
       {modal === "password" && <ChangePassword onClose={() => setModal(null)} />}
+      {modal === "pod" && <TipBox studentId={s.id} onClose={() => setModal(null)} />}
       {modal === "exeat" && <Exeat c={c} me={me} onClose={() => setModal(null)} onDone={() => { setModal(null); void load(); }} />}
     </Layout>
   );

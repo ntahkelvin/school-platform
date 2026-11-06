@@ -14,11 +14,12 @@ import { SchoolAnalysis } from "./Analysis";
 
 // ---------- Types and calls ----------
 
-interface TermInfo { id: string; name: string; number: number; session: string; starts_on: string | null; ends_on: string | null; terms: { id: string; name: string; number: number }[] }
+export interface TermInfo { id: string; name: string; number: number; session: string; starts_on: string | null; ends_on: string | null; terms: { id: string; name: string; number: number }[] }
 interface Col { key: string; label: string; group: string | null; max: number }
 interface Band { grade: string; min: number; max: number; remark: string }
 interface SheetRow { id: string; name: string; first_name: string; admission_no: string; thumb: string | null; class_name: string | null; marks: Record<string, number | null>;
-  absent: string[]; components: Record<string, number | null>; total: number | null; grade: string | null; remark: string | null; filled: number; position: string | null; locked: string[]; checks: Record<string, string> }
+  absent: string[]; components: Record<string, number | null>; total: number | null; grade: string | null; remark: string | null; filled: number; position: string | null; locked: string[]; checks: Record<string, string>;
+  borrowed?: Record<string, string>; excused?: string[] }
 export interface SheetQuery { id: string; student_id: string; student: string; component: string; status: string; label: string; text: string | null; claimed: number | null;
   has_photo: boolean; official: Record<string, number | null>; total: number | null; recorded: Record<string, { value: number }>; reply: string | null;
   history: { at: string; by: string; action: string; note: string | null }[]; locked: boolean; can_answer: boolean; can_decide: boolean }
@@ -27,7 +28,8 @@ export interface Step { status: string; label: string; waiting_for: string | nul
   locked: boolean; published: boolean; can_submit: boolean; can_check: boolean; row_notes: Record<string, string>; history: { at: string; by: string; action: string; note: string | null }[] }
 export interface Sheet {
   scope: string; title: string; subject: { id: string; name: string }; group: string; level: string; class_id: string | null; school_id: string; teacher: string | null; term: TermInfo;
-  scheme: { name: string; max: number; parts: { name: string; max: number }[] }[]; columns: Col[]; bands: Band[]; students: SheetRow[]; status: string;
+  scheme: { name: string; max: number; parts: { name: string; max: number; weight?: number | null }[] }[]; columns: Col[]; bands: Band[]; students: SheetRow[]; status: string;
+  method?: "add" | "weighted"; absent_rule?: string;
   steps: Record<string, Step>; queries: SheetQuery[]; can_edit: boolean; is_teacher: boolean; is_authority: boolean; teacher_id: string | null;
   checks?: Record<string, { warnings: { level: string; text: string }[] }>;
   stats: { average: number | null; highest: number | null; lowest: number | null; passed: number; scored: number; students: number; complete: number; grades: Record<string, number>; pass_mark: number };
@@ -41,12 +43,14 @@ interface WorkRow { id: string; name: string; thumb: string | null; has_login: b
 interface WorkDetail extends Work { rows: WorkRow[]; can_edit: boolean; columns: Col[]; sheet_open: boolean }
 interface BroadRow { id: string; name: string; first_name: string; thumb: string | null; gender: string | null; scores: Record<string, { total: number | null; grade: string | null }>;
   total: number | null; average: number | null; subjects: number; taking: number; position: string | null;
+  class_position?: string | null; level_position?: string | null; award?: string | null;
   card: { status: string; comment: boolean; principal: boolean; traits: number; seen: boolean } | null }
 interface Broad {
   class: { id: string; name: string; level: string; form_teacher: string | null }; school: { id: string; name: string }; term: TermInfo;
   subjects: { id: string; name: string; short: string; scopes: string[]; teacher: string | null; status: string; average: number | null; highest: number | null; lowest: number | null; scored: number; takers: number; complete: boolean }[];
   students: BroadRow[]; stats: { average: number | null; highest: number | null; lowest: number | null; size: number }; sheets_in: number; can_manage: boolean; can_publish: boolean; is_form_teacher: boolean;
   published: number; traits: Record<string, string[]>; bands: Band[];
+  rank_by?: "class" | "level"; level_size?: number; arms?: string[]; award_list?: { name: string; min: number; top?: number | null }[]; award_counts?: Record<string, number>;
 }
 export interface Card {
   school: { name: string; motto: string | null; logo: string | null; address: string | null; phone: string | null; email: string | null; colour: string | null };
@@ -57,7 +61,8 @@ export interface Card {
   subjects: { subject: string; components: Record<string, number | null>; total: number | null; grade: string | null; remark: string | null; position: string | null;
     class_average: number | null; highest: number | null; lowest: number | null; teacher: string | null; earlier: (number | null)[]; cumulative: number | null }[];
   summary: { total: number | null; average: number | null; subjects: number; taking: number; position: string | null; out_of: number; class_average: number | null; grade: string | null;
-    remark: string | null; best: string | null; merit_points: number; earlier: { term: string; average: number | null }[]; cumulative: number | null };
+    remark: string | null; best: string | null; merit_points: number; earlier: { term: string; average: number | null }[]; cumulative: number | null;
+    position_in?: string | null; class_position?: string | null; class_size?: number; level_position?: string | null; level_size?: number; award?: string | null };
   attendance: { present: number | null; days: number | null; absent?: number };
   traits: Record<string, number>; trait_groups: Record<string, string[]>; trait_words: Record<string, string>;
   teacher_comment: string | null; principal_comment: string | null; bands: Band[]; code?: string;
@@ -98,12 +103,13 @@ export const aapi = {
 };
 
 const nice = (d: string) => new Date(d.length === 10 ? `${d}T12:00:00` : d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-export const gradeHue = (g: string | null | undefined) => !g ? "slate" : g.startsWith("A") ? "green" : g.startsWith("B") ? "teal" : g.startsWith("C") ? "sky" : g.startsWith("D") ? "amber" : g.startsWith("E") ? "orange" : "red";
+const WORD_HUE: Record<string, string> = { excellent: "green", good: "teal", "very good": "teal", satisfactory: "sky", credit: "sky", pass: "amber", probation: "orange", fail: "red" };
+export const gradeHue = (g: string | null | undefined) => !g ? "slate" : WORD_HUE[g.toLowerCase()] ?? (g.length > 3 ? "violet" : null) ?? (g.startsWith("A") ? "green" : g.startsWith("B") ? "teal" : g.startsWith("C") ? "sky" : g.startsWith("D") ? "amber" : g.startsWith("E") ? "orange" : "red");
 const fmt = (n: number | null | undefined) => (n == null ? "–" : Number.isInteger(n) ? String(n) : n.toFixed(1));
 const KIND_HUE: Record<string, string> = { homework: "violet", classwork: "sky", project: "orange", test: "rose" };
 const KIND_ICON: Record<string, string> = { homework: "notebook", classwork: "pen-tool", project: "rocket", test: "clipboard-list" };
 
-function TermPick({ term, onPick }: { term: TermInfo; onPick: (id: string) => void }) {
+export function TermPick({ term, onPick }: { term: TermInfo; onPick: (id: string) => void }) {
   return (
     <label className="term-pick"><Icon name="calendar-range" size={15} /><select value={term.id} onChange={(e) => onPick(e.target.value)} aria-label="Term">
       {term.terms.map((t) => <option key={t.id} value={t.id}>{t.name} {term.session}</option>)}</select></label>
@@ -242,6 +248,8 @@ export function SheetPage({ me, onLogout, scope }: { me: Me; onLogout: () => voi
     e.preventDefault();
     lines.forEach((line, i) => line.split("\t").forEach((cell, j) => { const r = d.students[ri + i], c = cols[ci + j]; if (r && c && editable(r, c)) change(r, c, cell.trim()); }));
   };
+  const weighted = d.method === "weighted";
+  const weightOf = (c: Col) => d.scheme.find((x) => x.name === compOf(c.key))?.parts.find((p) => p.name === c.label)?.weight;
   const grades = d.bands.map((b) => ({ ...b, n: d.stats.grades[b.grade] ?? 0 }));
   const most = Math.max(1, ...grades.map((g) => g.n));
   const missing = d.stats.students - d.stats.complete;
@@ -255,7 +263,9 @@ export function SheetPage({ me, onLogout, scope }: { me: Me; onLogout: () => voi
         <span className="hero-pattern" aria-hidden="true" />
         <Glyph icon={l.icon} hue={l.hue} size={56} />
         <div className="grow"><h1>{d.subject.name} <small>{d.group}</small></h1>
-          <p>{d.teacher ? `Teacher: ${d.teacher}` : "No teacher set"} · {d.scheme.map((c) => `${c.name} ${c.max}`).join(" + ")} = 100</p></div>
+          <p>{d.teacher ? `Teacher: ${d.teacher}` : "No teacher set"} · {weighted
+            ? <>{d.scheme.length} blocks, each out of 100, then the average</>
+            : <>{d.scheme.map((c) => `${c.name} ${c.max}`).join(" + ")} = 100</>}</p></div>
         <div className="class-hero-actions">
           <TermPick term={d.term} onPick={setTerm} />
           {d.can_edit && d.homework.length > 0 && <button className="on-band with-icon" onClick={() => setModal("homework")}><Icon name="notebook" size={15} />Use homework marks</button>}
@@ -273,14 +283,16 @@ export function SheetPage({ me, onLogout, scope }: { me: Me; onLogout: () => voi
       </div>
       <section className="card editor">
         <div className="row wrap"><h3 className="grow">Scores</h3>
-          <span className={`as-save ${saving}`}>{saving === "saving" ? "Saving…" : saving === "saved" ? <><Icon name="check" size={13} />Saved</> : saving === "error" ? saveErr : d.can_edit ? "Type a mark. Enter goes down. ABS = absent. You can paste a column from Excel." : "Read only"}</span></div>
+          <span className={`as-save ${saving}`}>{saving === "saving" ? "Saving…" : saving === "saved" ? <><Icon name="check" size={13} />Saved</> : saving === "error" ? saveErr : d.can_edit ? "Type a mark. Enter goes down. ABS (or 0.1) = missed the test. You can paste a column from Excel." : "Read only"}</span></div>
         <div className="as-sheet-wrap">
           <table className="as-sheet">
             <thead>
-              {d.scheme.some((c) => c.parts.length) && <tr><th colSpan={2} />{d.scheme.map((c) => <th key={c.name} colSpan={Math.max(1, c.parts.length)} className="grp">{c.name}</th>)}<th colSpan={3} /></tr>}
+              {d.scheme.some((c) => c.parts.length) && <tr><th colSpan={2} />{d.scheme.map((c) => <th key={c.name} colSpan={Math.max(1, c.parts.length)} className="grp">{c.name}</th>)}<th colSpan={weighted ? d.scheme.length + 3 : 3} /></tr>}
               <tr><th>#</th><th className="name">Student</th>{cols.map((c) => { const st = d.steps[compOf(c.key)]; return (
                 <th key={c.key} className={st?.can_type ? "" : "shut"} title={st?.can_type ? undefined : st?.why_not ?? undefined}>
-                  {st?.locked ? "🔒 " : !st?.can_type ? <Icon name="lock" size={11} /> : null}{c.label}<small>/{c.max}</small></th>); })}<th>Total</th><th>Grade</th><th>Pos</th></tr>
+                  {st?.locked ? "🔒 " : !st?.can_type ? <Icon name="lock" size={11} /> : null}{c.label}<small>/{c.max}{weighted && weightOf(c) != null ? ` · ${weightOf(c)}%` : ""}</small></th>); })}
+                {weighted && d.scheme.map((c, i) => <th key={`b-${c.name}`} className="as-blk" title={`${c.name}: ${c.parts.map((p) => `${p.name} ${p.weight}%`).join(" + ")}`}>AVG{i + 1}<small>{c.name}</small></th>)}
+                <th>{weighted ? "TAVG" : "Total"}</th><th>Grade</th><th>Pos</th></tr>
             </thead>
             <tbody>
               {d.students.map((r, ri) => (
@@ -292,10 +304,13 @@ export function SheetPage({ me, onLogout, scope }: { me: Me; onLogout: () => voi
                       {Object.entries(r.checks ?? {}).filter(([, v]) => !["match", "confirmed", "accepted", "closed", "corrected", "answered"].includes(v)).map(([k, v]) => (
                         <small key={k} className={`as-chk s-${v}`}>{k}: {CHECK_WORD[v] ?? v}</small>))}</span></td>
                   {cols.map((c, ci) => { const v = valueOf(r, c.key); const ok = editable(r, c); return (
-                    <td key={c.key} className={`${bad(v, c) ? "bad" : ""}${ok ? "" : " shut"}`}>
+                    <td key={c.key} className={`${bad(v, c) ? "bad" : ""}${ok ? "" : " shut"}${r.borrowed?.[c.key] ? " borrowed" : r.excused?.includes(c.key) ? " excused" : ""}`}
+                        title={r.borrowed?.[c.key] ? `Missed: uses ${r.borrowed[c.key].split(" › ").pop()} instead` : r.excused?.includes(c.key) ? "Missed: left out, the other scores count more" : undefined}>
                       <input data-cell={`${ri}-${ci}`} inputMode="decimal" value={v} disabled={!ok} aria-label={`${r.name} ${c.key}`}
                              onChange={(e) => change(r, c, e.target.value)} onKeyDown={(e) => onKey(e, ri, ci)} onPaste={(e) => onPaste(e, ri, ci)} onFocus={(e) => e.target.select()} />
+                      {r.borrowed?.[c.key] && <small className="as-borrow">= {r.borrowed[c.key].split(" › ").pop()}</small>}
                     </td>); })}
+                  {weighted && d.scheme.map((c) => <td key={`b-${c.name}`} className="as-blk">{fmt(r.components[c.name])}</td>)}
                   <td className="tot">{fmt(r.total)}</td>
                   <td>{r.grade && <span className="as-grade" style={hue(gradeHue(r.grade))}>{r.grade}</span>}</td>
                   <td className="muted">{r.position ?? ""}</td>
@@ -633,7 +648,8 @@ export function ResultsPage({ me, onLogout, classId }: { me: Me; onLogout: () =>
       </div>
       <div className="stat-strip">
         <Stat icon="chart" hue="blue" value={fmt(d.stats.average)} label="class average" note={d.stats.highest != null ? `Best ${fmt(d.stats.highest)} · lowest ${fmt(d.stats.lowest)}` : undefined} />
-        <Stat icon="students" hue="violet" value={d.stats.size} label="students" />
+        <Stat icon="students" hue="violet" value={d.stats.size} label="students" note={(d.arms?.length ?? 0) > 1 ? `${d.level_size} in the year (${d.arms?.join(", ")})` : undefined} />
+        {(d.award_list?.length ?? 0) > 0 && <Stat icon="award" hue="amber" value={d.award_list!.map((a) => d.award_counts?.[a.name] ?? 0).join(" · ")} label={d.award_list!.map((a) => a.name).join(" · ")} note={d.award_list!.map((a) => `${a.name} from ${a.min}%`).join(", ")} />}
         <Stat icon="presentation" hue="fuchsia" value={d.subjects.length} label="subjects" note={waiting.length ? `Waiting for ${waiting.length}` : "All handed in"} />
       </div>
       {waiting.length > 0 && (
@@ -649,7 +665,9 @@ export function ResultsPage({ me, onLogout, classId }: { me: Me; onLogout: () =>
         <p className="small muted">Tap a student to write their report card and see it.</p>
         <div className="as-sheet-wrap">
           <table className="as-broad">
-            <thead><tr><th>Pos</th><th className="name">Student</th>{d.subjects.map((s) => <th key={s.id} title={s.name} className={s.status === "submitted" ? "" : "waiting"}><span>{s.name}</span></th>)}<th>Total</th><th>Avg</th><th>Card</th></tr></thead>
+            <thead><tr><th>Pos</th><th className="name">Student</th>{d.subjects.map((s) => <th key={s.id} title={s.name} className={s.status === "submitted" ? "" : "waiting"}><span>{s.name}</span></th>)}<th>Total</th><th>Avg</th>
+              {(d.arms?.length ?? 0) > 1 && <th title={`Across ${d.arms?.join(", ")}`}>Year<small className="block muted">of {d.level_size}</small></th>}
+              {(d.award_list?.length ?? 0) > 0 && <th>Award</th>}<th>Card</th></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} onClick={() => setOpen(r.id)} className="clickable">
@@ -657,6 +675,8 @@ export function ResultsPage({ me, onLogout, classId }: { me: Me; onLogout: () =>
                   <td className="name">{r.thumb ? <img className="mini-face" src={r.thumb} alt="" /> : <Avatar name={r.name} size={28} />}<span>{r.name}</span></td>
                   {d.subjects.map((s) => { const x = r.scores[s.id]; return <td key={s.id} className={x ? "" : "na"}>{x ? (x.total == null ? <span className="muted">·</span> : <span className="as-cell" style={hue(gradeHue(x.grade))}>{fmt(x.total)}</span>) : ""}</td>; })}
                   <td className="tot">{fmt(r.total)}</td><td className="tot">{fmt(r.average)}</td>
+                  {(d.arms?.length ?? 0) > 1 && <td className="muted">{r.level_position ?? ""}</td>}
+                  {(d.award_list?.length ?? 0) > 0 && <td>{r.award && <span className="hue-chip" style={hue(r.award === d.award_list?.[0]?.name ? "amber" : "teal")}>{r.award}</span>}</td>}
                   <td>{r.card?.status === "published" ? <span className="hue-chip" style={hue("green")}>{r.card.seen ? "Seen" : "Sent"}</span> : r.card?.comment ? <span className="hue-chip" style={hue("blue")}>Ready</span> : <span className="hue-chip" style={hue("slate")}>Draft</span>}</td>
                 </tr>
               ))}
@@ -741,8 +761,9 @@ export function ReportCardView({ card: c, code }: { card: Card; code?: string | 
         </dl>
         <div className="rc-big">
           <div><b>{fmt(c.summary.average)}%</b><small>average</small></div>
-          <div><b>{c.summary.position ?? "–"}</b><small>of {c.summary.out_of}</small></div>
+          <div><b>{c.summary.position ?? "–"}</b><small>of {c.summary.out_of}{c.summary.position_in && c.summary.position_in !== c.class.name ? ` in ${c.summary.position_in}` : ""}</small></div>
           <div><b>{c.summary.grade ?? "–"}</b><small>{c.summary.remark ?? "grade"}</small></div>
+          {c.summary.award && <div className="rc-award"><b>🏅 {c.summary.award}</b><small>award</small></div>}
         </div>
       </section>
       <table className="rc-table">
@@ -883,9 +904,10 @@ export function ResultsOverview({ schoolId }: { schoolId: string }) {
   const [view, setView] = useState<"tests" | "cards" | "analysis">("tests");
   return (
     <section className="stack">
-      <div className="segmented"><button className={view === "tests" ? "on" : ""} onClick={() => setView("tests")}><Icon name="send" size={15} />Tests and publishing</button>
+      <div className="segmented wrap-seg"><button className={view === "tests" ? "on" : ""} onClick={() => setView("tests")}><Icon name="send" size={15} />Tests and publishing</button>
         <button className={view === "cards" ? "on" : ""} onClick={() => setView("cards")}><Icon name="award" size={15} />Report cards</button>
-        <button className={view === "analysis" ? "on" : ""} onClick={() => setView("analysis")}><Icon name="trending" size={15} />Analysis</button></div>
+        <button className={view === "analysis" ? "on" : ""} onClick={() => setView("analysis")}><Icon name="trending" size={15} />Analysis</button>
+        <a href={`#/probation-list/${schoolId}`}><Icon name="life-buoy" size={15} />Probation</a></div>
       {view === "tests" ? <ControlRoom schoolId={schoolId} /> : view === "cards" ? <CardsOverview schoolId={schoolId} /> : <SchoolAnalysis schoolId={schoolId} />}
     </section>
   );

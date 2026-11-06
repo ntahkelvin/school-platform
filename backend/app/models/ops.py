@@ -161,3 +161,50 @@ class MedicineStock(IdMixin, TimestampMixin, Base):
     reorder_level: Mapped[float] = mapped_column(Float, default=10)
     expiry: Mapped[date | None] = mapped_column(Date)
     notes: Mapped[str | None] = mapped_column(String(200))
+
+
+class DisciplineSettings(IdMixin, TimestampMixin, Base):
+    """How a school runs discipline: who the principal of discipline (POD) is, its offences and punishments,
+    the ladder (demerit points -> detention -> discipline probation) and what families see."""
+    __tablename__ = "discipline_settings"
+
+    school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"), unique=True)
+    pod_user_ids: Mapped[list] = mapped_column(JSON, default=list)           # principals of discipline (POD), and assistants
+    offences: Mapped[list] = mapped_column(JSON, default=list)               # [{key, name, level: minor|major|severe, points, boarding}]
+    punishments: Mapped[list] = mapped_column(JSON, default=list)            # [{key, name}] the school's own list (manual labour, lines...)
+    ladder: Mapped[dict] = mapped_column(JSON, default=dict)                 # {"detention": 10, "probation": 20} demerit points this term
+    parents_see: Mapped[str] = mapped_column(String(10), default="all")      # all, serious, letters
+    boarding_first: Mapped[bool] = mapped_column(Boolean, default=True)      # boarding offences go to the house master first
+    pod_settles_minor: Mapped[bool] = mapped_column(Boolean, default=True)   # the POD may deal with minor offences without the principal
+
+
+class DisciplineCase(IdMixin, TimestampMixin, Base):
+    """One student's misconduct, from the report to the principal's decision and what was done.
+
+    Reported -> (house master, for boarding offences) -> POD looks into it -> principal decides -> actions done -> closed.
+    """
+    __tablename__ = "discipline_cases"
+
+    school_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("schools.id", ondelete="CASCADE"), index=True)
+    number: Mapped[int] = mapped_column(Integer)
+    student_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("students.id", ondelete="CASCADE"), index=True)  # empty: a student's tip
+    about: Mapped[str | None] = mapped_column(String(200))                   # a tip: who it is about, in the student's words
+    group: Mapped[str | None] = mapped_column(String(12), index=True)        # the same report about several students
+    offence: Mapped[str] = mapped_column(String(40))                         # key from the school's list, or "ladder"
+    offence_name: Mapped[str] = mapped_column(String(120))
+    level: Mapped[str] = mapped_column(String(10), default="minor")          # minor, major, severe
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    place: Mapped[str | None] = mapped_column(String(120))
+    details: Mapped[str] = mapped_column(Text)
+    reported_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    reporter_kind: Mapped[str] = mapped_column(String(10), default="staff")  # staff, student, system
+    status: Mapped[str] = mapped_column(String(12), default="pod", index=True)  # tip, house, pod, principal, decided, closed, dismissed
+    statements: Mapped[list] = mapped_column(JSON, default=list)             # [{id, who, text, at, by}] what people said
+    recommendation: Mapped[str | None] = mapped_column(Text)                 # the POD's, sent to the principal
+    decision: Mapped[str | None] = mapped_column(Text)                       # the principal's words
+    decided_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    actions: Mapped[list] = mapped_column(JSON, default=list)                # [{id, kind, name, points, on, until, at, note, done}]
+    parent_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    parent_reply: Mapped[str | None] = mapped_column(Text)
+    history: Mapped[list] = mapped_column(JSON, default=list)

@@ -16,7 +16,7 @@ from app.api.academics import COMMON_SUBJECTS, TERM_NAMES
 from app.api.access import owned_school
 from app.api.deps import current_user
 from app.api.structure import (
-    ASSESSMENT_PRESETS, GRADING_PRESETS, STANDARD_DEPARTMENTS, STANDARD_SECTIONS, make_components, preset_components,
+    ASSESSMENT_PRESETS, GRADING_PRESETS, WEIGHTED_PRESETS, preset_method, STANDARD_DEPARTMENTS, STANDARD_SECTIONS, make_components, preset_components,
 )
 from app.core.db import get_db
 from app.models import (
@@ -89,7 +89,7 @@ def starter_options() -> dict:
     return {
         "sections": [name for name, _ in STANDARD_SECTIONS],
         "grading": list(GRADING_PRESETS),
-        "assessment": list(ASSESSMENT_PRESETS),
+        "assessment": [*ASSESSMENT_PRESETS, *WEIGHTED_PRESETS],
     }
 
 
@@ -115,7 +115,7 @@ def apply_starter(school_id: uuid.UUID, data: StarterIn, user: User = Depends(cu
     if unknown:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Unknown section: {unknown[0]}")
     for key, presets in ((data.secondary_grading, GRADING_PRESETS), (data.primary_grading, GRADING_PRESETS),
-                         (data.assessment, ASSESSMENT_PRESETS)):
+                         (data.assessment, {**ASSESSMENT_PRESETS, **WEIGHTED_PRESETS})):
         if key and key not in presets:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Unknown choice: {key}")
 
@@ -130,7 +130,7 @@ def apply_starter(school_id: uuid.UUID, data: StarterIn, user: User = Depends(cu
         scheme = db.scalar(select(AssessmentScheme).where(AssessmentScheme.school_id == school.id,
                                                           AssessmentScheme.name == scheme_name))
         if not scheme:
-            scheme = AssessmentScheme(school_id=school.id, name=scheme_name,
+            scheme = AssessmentScheme(school_id=school.id, name=scheme_name, method=preset_method(data.assessment),
                                       components=make_components(preset_components(data.assessment)))
             db.add(scheme)
             db.flush()

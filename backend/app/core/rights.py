@@ -24,6 +24,7 @@ AREAS: dict[str, dict] = {
     "classes": {"label": "Classes", "icon": "classes", "hint": "Classes, sessions and terms"},
     "teaching": {"label": "Teaching", "icon": "presentation", "hint": "Subjects, form teachers, who teaches what"},
     "results": {"label": "Scores and results", "icon": "chart", "hint": "Every score sheet, broadsheets, report cards and publishing results"},
+    "discipline": {"label": "Discipline", "icon": "gavel", "hint": "Behaviour reports, the POD's cases, decisions, detention, suspensions"},
     "staff": {"label": "Staff", "icon": "staff", "hint": "Staff list, jobs and staff records"},
     "staff_day": {"label": "Staff day", "icon": "staff-day", "hint": "Staff sign-in, leave, duties, lesson notes"},
     "growth": {"label": "Growth", "icon": "growth", "hint": "Observations, appraisals, training, wellbeing"},
@@ -42,6 +43,7 @@ PRIVATE: dict[str, dict] = {
 }
 POWERS: dict[str, dict] = {
     "publish_results": {"label": "Publish results", "icon": "send", "hint": "Set score deadlines, open closed tests again, publish scores and report cards to families, and take the padlock off published tests."},
+    "decide_discipline": {"label": "Decide discipline cases", "icon": "gavel", "hint": "Decide what happens after the POD's report: counselling, punishment, detention, inviting parents, probation, suspension, expulsion."},
     "see_as": {"label": "See as someone else", "icon": "eye", "hint": "Look at the platform the way another person sees it, to help them. Read-only."},
 }
 
@@ -79,9 +81,9 @@ DEFAULTS: dict[str, set[str]] = {
     "head_of_school": set(ALL),
     "head": (ALL - {"rights.change"}),
     "vice_principal": _see(*[a for a in AREA_KEYS if a not in ("imports", "logins", "rights")])
-        | _both("students", "attendance", "classes", "teaching", "results", "staff_day", "growth", "operations", "library")
+        | _both("students", "attendance", "classes", "teaching", "results", "discipline", "staff_day", "growth", "operations", "library")
         | {"private.safeguarding", "power.publish_results"},
-    "it_admin": _see(*[a for a in AREA_KEYS if a != "imports"])
+    "it_admin": _see(*[a for a in AREA_KEYS if a not in ("imports", "discipline")])
         | _both("school", "students", "classes", "teaching", "staff", "staff_day", "operations", "facilities", "setup", "imports", "logins", "library")
         | {"power.see_as", "power.publish_results"},
     "bursar": _see("school", "students", "staff", "facilities") | {"private.staff_pay"},
@@ -138,6 +140,7 @@ ROUTE_AREAS: list[tuple[str, str, str]] = [
     ("library", r"", "library"),
     ("cleaning", r"", "operations"),
     ("assets", r"", "facilities"),
+    ("discipline", r"", "discipline"),
 ]
 
 def set_route(user: User, method: str, module: str, path: str) -> None:

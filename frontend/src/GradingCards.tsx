@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { errorText } from "./api";
-import { structure, type Band, type Component, type Scale, type Scheme } from "./structureApi";
+import { structure, type Band, type Component, type Scale, type Scheme, type SchemeMethod, type SchemePreset } from "./structureApi";
 
-type PartRow = { name: string; max_score: string };
+type PartRow = { name: string; max_score: string; weight: string };
 import { Empty, Field, Glyph, hue, IconButton, Modal } from "./ui";
 import Icon from "./Icon";
 
@@ -56,7 +56,7 @@ export function GradingCard({ schoolId }: { schoolId: string }) {
           <div className="grade-ladder">
             {s.bands.map((b, i) => (
               <div key={b.grade} className="grade" style={hue(bandHue(i, s.bands.length))}>
-                <strong>{b.grade}</strong>
+                <strong className={b.grade.length > 4 ? "word" : ""}>{b.grade}</strong>
                 <span className="grade-range">{b.min_score}–{b.max_score}</span>
                 <span className="grade-remark">{b.remark}</span>
               </div>
@@ -165,7 +165,7 @@ type CompRow = { name: string; max_score: string; parts: PartRow[] };
 
 export function SchemesCard({ schoolId }: { schoolId: string }) {
   const [schemes, setSchemes] = useState<Scheme[] | null>(null);
-  const [presets, setPresets] = useState<Record<string, Component[]>>({});
+  const [presets, setPresets] = useState<Record<string, SchemePreset>>({});
   const [editing, setEditing] = useState<Scheme | "new" | null>(null);
   const [error, setError] = useState("");
 
@@ -182,7 +182,7 @@ export function SchemesCard({ schoolId }: { schoolId: string }) {
       <div className="card-head">
         <div>
           <h2>CA and exam split</h2>
-          <p className="muted small editor-intro">How each subject's 100 marks are made up, e.g. two CAs of 20 and an exam of 60. Each section chooses one.</p>
+          <p className="muted small editor-intro">How each subject's term score is made up: marks that add up to 100 (two CAs of 20 and an exam of 60), or weighted blocks that are averaged (Block 1 = 20% CE1 + 20% CE2 + 60% CA1). Each section chooses one.</p>
         </div>
         <button className="primary with-icon" onClick={() => setEditing("new")}><Icon name="plus" size={16} />Add CA / exam split</button>
       </div>
@@ -192,7 +192,7 @@ export function SchemesCard({ schoolId }: { schoolId: string }) {
         <div key={s.id} className="scale">
           <div className="scale-head">
             <Glyph icon="clipboard" hue="violet" size={36} soft />
-            <strong className="grow">{s.name}</strong>
+            <strong className="grow">{s.name}{s.method === "weighted" && <small className="pill-soft"> Weighted blocks · average</small>}</strong>
             <IconButton icon="edit" label={`Edit ${s.name}`} onClick={() => setEditing(s)} />
             <IconButton icon="trash" label={`Delete ${s.name}`} danger onClick={() => {
               if (window.confirm(`Delete ${s.name}?`)) structure.deleteScheme(s.id).then(load).catch((err) => setError(errorText(err)));
@@ -200,13 +200,13 @@ export function SchemesCard({ schoolId }: { schoolId: string }) {
           </div>
           <div className="split-bar">
             {s.components.map((c, i) => (
-              <span key={c.name} style={{ flexGrow: c.max_score, ...hue(/exam/i.test(c.name) ? "rose" : PART_HUES[i % PART_HUES.length]) }}
+              <span key={c.name} style={{ flexGrow: s.method === "weighted" ? 1 : c.max_score, ...hue(/exam/i.test(c.name) ? "rose" : PART_HUES[i % PART_HUES.length]) }}
                     className={/exam/i.test(c.name) ? "exam" : ""}>
                 <span className="split-name">{c.name}</span>
-                <strong>{c.max_score}</strong>
+                <strong>{s.method === "weighted" ? `${Math.round(1000 / s.components.length) / 10}%` : c.max_score}</strong>
                 {c.parts.length > 0 && (
                   <span className="parts">
-                    {c.parts.map((p) => `${p.name} ${p.max_score}`).join(" · ")}
+                    {c.parts.map((p) => (s.method === "weighted" ? `${p.name} ${p.weight}%` : `${p.name} ${p.max_score}`)).join(" · ")}
                   </span>
                 )}
               </span>
@@ -220,9 +220,9 @@ export function SchemesCard({ schoolId }: { schoolId: string }) {
             scheme={editing === "new" ? null : editing}
             presets={presets}
             onCancel={() => setEditing(null)}
-            onSubmit={async (name, comps) => {
-              if (editing === "new") await structure.addScheme(schoolId, name, comps);
-              else await structure.saveScheme(editing.id, name, comps);
+            onSubmit={async (name, comps, method) => {
+              if (editing === "new") await structure.addScheme(schoolId, name, comps, method);
+              else await structure.saveScheme(editing.id, name, comps, method);
               setEditing(null);
               load();
             }}
@@ -237,17 +237,19 @@ function SchemeForm({
   scheme, presets, onSubmit, onCancel,
 }: {
   scheme: Scheme | null;
-  presets: Record<string, Component[]>;
-  onSubmit: (name: string, components: Component[]) => Promise<void>;
+  presets: Record<string, SchemePreset>;
+  onSubmit: (name: string, components: Component[], method: SchemeMethod) => Promise<void>;
   onCancel: () => void;
 }) {
   const first = Object.keys(presets)[0];
   const asRows = (c: Component[]): CompRow[] =>
-    c.map((x) => ({ name: x.name, max_score: String(x.max_score), parts: x.parts.map((p) => ({ name: p.name, max_score: String(p.max_score) })) }));
+    c.map((x) => ({ name: x.name, max_score: String(x.max_score), parts: x.parts.map((p) => ({ name: p.name, max_score: String(p.max_score), weight: p.weight == null ? "" : String(p.weight) })) }));
   const [name, setName] = useState(scheme?.name ?? "");
-  const [rows, setRows] = useState<CompRow[]>(scheme ? asRows(scheme.components) : first ? asRows(presets[first]) : []);
+  const [method, setMethod] = useState<SchemeMethod>(scheme?.method ?? (first ? presets[first].method : "add"));
+  const [rows, setRows] = useState<CompRow[]>(scheme ? asRows(scheme.components) : first ? asRows(presets[first].components) : []);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const weighted = method === "weighted";
   const total = rows.reduce((n, r) => n + (Number(r.max_score) || 0), 0);
   const update = (i: number, patch: Partial<CompRow>) => {
     setRows(rows.map((x, j) => (j === i ? { ...x, ...patch } : x)));
@@ -255,25 +257,45 @@ function SchemeForm({
   };
   const setPart = (i: number, k: number, patch: Partial<PartRow>) =>
     update(i, { parts: rows[i].parts.map((p, m) => (m === k ? { ...p, ...patch } : p)) });
+  const pick = (key: string) => {
+    if (!presets[key]) return;
+    setMethod(presets[key].method);
+    setRows(asRows(presets[key].components));
+  };
+  const switchTo = (m: SchemeMethod) => {
+    setMethod(m);
+    setError("");
+    if (m === "weighted") setRows(rows.map((r) => ({ ...r, max_score: "100", parts: r.parts.map((p) => ({ ...p, max_score: "100", weight: p.weight || "" })) })));
+  };
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (name.trim().length < 2) return setError("Give it a name, for example Secondary or Primary.");
-    if (rows.some((r) => !r.name.trim() || !/^\d+$/.test(r.max_score))) return setError("Every part needs a name and a whole-number mark.");
-    if (total !== 100) return setError(`The parts must add up to 100. They add up to ${total}.`);
-    for (const r of rows) {
-      if (r.parts.length === 0) continue;
-      if (r.parts.some((p) => !p.name.trim() || !/^\d+$/.test(p.max_score))) return setError(`${r.name}: every piece needs a name and a whole-number mark.`);
-      const sub = r.parts.reduce((n, p) => n + Number(p.max_score), 0);
-      if (sub !== Number(r.max_score)) return setError(`${r.name}: its pieces add up to ${sub}, but ${r.name} is worth ${r.max_score}.`);
+    if (weighted) {
+      if (rows.some((r) => !r.name.trim())) return setError("Every block needs a name.");
+      for (const r of rows) {
+        if (r.parts.some((p) => !p.name.trim() || !/^\d+$/.test(p.max_score) || p.weight === "" || Number.isNaN(Number(p.weight))))
+          return setError(`${r.name}: every score needs a name, what it is marked out of, and a weight (%).`);
+        const w = Math.round(r.parts.reduce((n, p) => n + Number(p.weight || 0), 0) * 100) / 100;
+        if (r.parts.length && w !== 100) return setError(`${r.name}: the weights add up to ${w}%. They must add up to 100%.`);
+      }
+    } else {
+      if (rows.some((r) => !r.name.trim() || !/^\d+$/.test(r.max_score))) return setError("Every part needs a name and a whole-number mark.");
+      if (total !== 100) return setError(`The parts must add up to 100. They add up to ${total}.`);
+      for (const r of rows) {
+        if (r.parts.length === 0) continue;
+        if (r.parts.some((p) => !p.name.trim() || !/^\d+$/.test(p.max_score))) return setError(`${r.name}: every piece needs a name and a whole-number mark.`);
+        const sub = r.parts.reduce((n, p) => n + Number(p.max_score), 0);
+        if (sub !== Number(r.max_score)) return setError(`${r.name}: its pieces add up to ${sub}, but ${r.name} is worth ${r.max_score}.`);
+      }
     }
     setBusy(true);
     try {
       await onSubmit(name.trim(), rows.map((r) => ({
         name: r.name.trim(),
-        max_score: Number(r.max_score),
-        parts: r.parts.map((p) => ({ name: p.name.trim(), max_score: Number(p.max_score) })),
-      })));
+        max_score: weighted ? 100 : Number(r.max_score),
+        parts: r.parts.map((p) => ({ name: p.name.trim(), max_score: Number(p.max_score), weight: weighted ? Number(p.weight) : null })),
+      })), method);
     } catch (err) {
       setError(errorText(err));
       setBusy(false);
@@ -285,25 +307,36 @@ function SchemeForm({
       <div className="form-grid">
         <Field label="Name"><input value={name} placeholder="e.g. Secondary" onChange={(e) => { setName(e.target.value); setError(""); }} autoFocus /></Field>
         <Field label="Start from">
-          <select value="" onChange={(e) => e.target.value && setRows(asRows(presets[e.target.value]))}>
+          <select value="" onChange={(e) => e.target.value && pick(e.target.value)}>
             <option value="">Choose a common split…</option>
             {Object.keys(presets).map((p) => <option key={p}>{p}</option>)}
           </select>
         </Field>
       </div>
+      <div className="segmented wrap-seg" role="radiogroup" aria-label="How the term score is worked out">
+        <button type="button" role="radio" aria-checked={!weighted} className={!weighted ? "on" : ""} onClick={() => switchTo("add")}>Marks add up to 100</button>
+        <button type="button" role="radio" aria-checked={weighted} className={weighted ? "on" : ""} onClick={() => switchTo("weighted")}>Weighted blocks, averaged</button>
+      </div>
+      <p className="muted small">{weighted
+        ? "Each block is a percentage made from its scores by weight. Every score is marked out of its own number (often 100). The term score is the plain average of the blocks."
+        : "Each part has marks; together they make 100. Split a part when it is made of smaller pieces (CA1 = test + assignment + classwork)."}</p>
       <div className="table-wrap plain">
         <table className="edit-table">
-          <thead><tr><th>Part</th><th>Marks</th><th /></tr></thead>
+          <thead><tr><th>{weighted ? "Block / score" : "Part"}</th><th>{weighted ? "Out of" : "Marks"}</th>{weighted && <th>Weight</th>}<th /></tr></thead>
           <tbody>
             {rows.flatMap((r, i) => {
               const sub = r.parts.reduce((n, p) => n + (Number(p.max_score) || 0), 0);
+              const wsum = Math.round(r.parts.reduce((n, p) => n + (Number(p.weight) || 0), 0) * 100) / 100;
               return [
                 <tr key={`c${i}`}>
-                  <td><input aria-label="Part name" value={r.name} onChange={(e) => update(i, { name: e.target.value })} /></td>
-                  <td><input aria-label="Marks" inputMode="numeric" value={r.max_score} onChange={(e) => update(i, { max_score: e.target.value })} /></td>
+                  <td><input aria-label={weighted ? "Block name" : "Part name"} value={r.name} onChange={(e) => update(i, { name: e.target.value })} /></td>
+                  <td>{weighted ? <span className="muted small">100%</span> : <input aria-label="Marks" inputMode="numeric" value={r.max_score} onChange={(e) => update(i, { max_score: e.target.value })} />}</td>
+                  {weighted && <td className="muted small">{rows.length ? `${Math.round(1000 / rows.length) / 10}% of term` : ""}</td>}
                   <td className="nowrap">
                     {r.parts.length === 0 && (
-                      <button type="button" className="ghost small" onClick={() => update(i, { parts: [{ name: "Test", max_score: "" }, { name: "Assignment", max_score: "" }] })}>
+                      <button type="button" className="ghost small" onClick={() => update(i, { parts: weighted
+                        ? [{ name: "", max_score: "100", weight: "" }, { name: "", max_score: "100", weight: "" }]
+                        : [{ name: "Test", max_score: "", weight: "" }, { name: "Assignment", max_score: "", weight: "" }] })}>
                         Split
                       </button>
                     )}
@@ -312,8 +345,9 @@ function SchemeForm({
                 </tr>,
                 ...r.parts.map((p, k) => (
                   <tr key={`c${i}p${k}`} className="sub-row">
-                    <td><input aria-label={`${r.name} piece name`} value={p.name} onChange={(e) => setPart(i, k, { name: e.target.value })} /></td>
+                    <td><input aria-label={`${r.name} piece name`} value={p.name} placeholder={weighted ? "e.g. CE1" : ""} onChange={(e) => setPart(i, k, { name: e.target.value })} /></td>
                     <td><input aria-label={`${r.name} piece marks`} inputMode="numeric" value={p.max_score} onChange={(e) => setPart(i, k, { max_score: e.target.value })} /></td>
+                    {weighted && <td><span className="pct-input"><input aria-label={`${r.name} piece weight`} inputMode="decimal" value={p.weight} onChange={(e) => setPart(i, k, { weight: e.target.value })} />%</span></td>}
                     <td><button type="button" className="ghost" aria-label="Remove piece" onClick={() => update(i, { parts: r.parts.filter((_, m) => m !== k) })}>✕</button></td>
                   </tr>
                 )),
@@ -321,10 +355,12 @@ function SchemeForm({
                   ? [
                       <tr key={`c${i}add`} className="sub-row">
                         <td>
-                          <button type="button" className="ghost small" onClick={() => update(i, { parts: [...r.parts, { name: "", max_score: "" }] })}>+ Add a piece</button>
+                          <button type="button" className="ghost small" onClick={() => update(i, { parts: [...r.parts, { name: "", max_score: weighted ? "100" : "", weight: "" }] })}>+ Add a {weighted ? "score" : "piece"}</button>
                           <button type="button" className="ghost small" onClick={() => update(i, { parts: [] })}>Don't split</button>
                         </td>
-                        <td className={sub === Number(r.max_score) ? "c-present small" : "c-absent small"}>{sub} / {r.max_score || 0}</td>
+                        {weighted
+                          ? <><td /><td className={wsum === 100 ? "c-present small" : "c-absent small"}>{wsum}% / 100%</td></>
+                          : <td className={sub === Number(r.max_score) ? "c-present small" : "c-absent small"}>{sub} / {r.max_score || 0}</td>}
                         <td />
                       </tr>,
                     ]
@@ -332,11 +368,11 @@ function SchemeForm({
               ];
             })}
           </tbody>
-          <tfoot><tr><td><strong>Total</strong></td><td className={total === 100 ? "c-present" : "c-absent"}><strong>{total}</strong> / 100</td><td /></tr></tfoot>
+          {!weighted && <tfoot><tr><td><strong>Total</strong></td><td className={total === 100 ? "c-present" : "c-absent"}><strong>{total}</strong> / 100</td><td /></tr></tfoot>}
+          {weighted && <tfoot><tr><td colSpan={4} className="small"><strong>Term score</strong> = ({rows.map((r) => r.name || "?").join(" + ")}) ÷ {rows.length}</td></tr></tfoot>}
         </table>
       </div>
-      <button type="button" onClick={() => setRows([...rows, { name: "", max_score: "", parts: [] }])}>Add a part</button>
-      <p className="muted small">Use Split when a part is made of smaller pieces, for example CA1 = test + assignment + classwork.</p>
+      <button type="button" onClick={() => setRows([...rows, { name: weighted ? `Block ${rows.length + 1}` : "", max_score: weighted ? "100" : "", parts: [] }])}>{weighted ? "Add a block" : "Add a part"}</button>
       {error && <p className="error">{error}</p>}
       <div className="row">
         <button className="primary" disabled={busy}>{scheme ? "Save changes" : "Add"}</button>

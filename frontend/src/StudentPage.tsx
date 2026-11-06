@@ -22,6 +22,8 @@ import { NotYours } from "./ClassPage";
 import { StudentGoalsCard } from "./StudentPortal";
 import { WeekGrid, type Grid } from "./Timetable";
 import { SeenForm } from "./FamilyAdmin";
+import { ProbationBanner } from "./Probation";
+import { DisciplineStrip } from "./Discipline";
 
 // ---------- Types ----------
 
@@ -161,6 +163,9 @@ export default function StudentPage({ me, onLogout, studentId }: { me: Me; onLog
         </div>
         {!a.full && <p className="stu-why"><Icon name="eye" size={14} />You see this profile as {a.why.toLowerCase()}. Addresses, ID numbers and documents are only for the school office.</p>}
       </header>
+      <ProbationBanner studentId={studentId} />
+      <DisciplineStrip studentId={studentId} schoolId={p.student.school_id}
+        student={{ id: p.student.id, name: p.student.full_name, admission_no: p.student.admission_no, class_name: p.placement.class?.name ?? null, gender: p.student.gender, boarder: p.student.boarding_status === "boarder" }} />
 
       <nav className="stu-tabs" role="tablist">
         {tabs.map(([k, l, ic]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}><Icon name={ic} size={15} />{l}</button>)}

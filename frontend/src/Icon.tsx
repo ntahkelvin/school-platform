@@ -13,7 +13,7 @@ import {
   Warehouse, Waves, Wrench, X, Zap, LogIn, LogOut, ScanLine, ScanQrCode, ClipboardList, FileText, Check, Undo2, Keyboard,
   Delete, CalendarX, Hourglass, Timer, Send, RefreshCw, Link, Copy, ChevronLeft, ChevronRight, UserCheck, UserX, Umbrella,
   Locate, Smartphone, CircleCheck, CircleX, TreePalm, Inbox, Settings, CalendarRange, History, Eye, Heart, Target, Gauge, MessageCircle,
-  Flame, Quote, ThumbsUp, type LucideIcon,
+  Flame, Quote, ThumbsUp, TriangleAlert, LifeBuoy, Folder, type LucideIcon,
 } from "lucide-react";
 
 import { createLucideIcon } from "lucide-react";
@@ -27,6 +27,7 @@ const Venus = createLucideIcon("Venus", [
 ]);
 
 const ICONS: Record<string, LucideIcon> = {
+  "alert-triangle": TriangleAlert, "life-buoy": LifeBuoy, folder: Folder, "file-text": FileText, x: X,
   // school menu
   overview: House, students: Users, attendance: CalendarCheck, classes: School, staff: UserRound,
   facilities: Building2, sections: Layers, departments: Network, houses: Flag, grading: Award,

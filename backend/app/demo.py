@@ -3,6 +3,7 @@
     python -m app.demo                          list what can be added
     python -m app.demo results                  scores, homework and report cards for one class (and half a sheet for another)
     python -m app.demo results "Jesuit" "JSS 2C"   choose the school (part of its name) and the class
+    python -m app.demo discipline "Jesuit"        discipline reports at every stage: POD, principal, house master, detention, suspension
 
 On the server:  sudo bash /opt/school-platform/server/demo.sh results
 It never overwrites marks someone has typed: it only fills empty ones.
@@ -10,13 +11,14 @@ It never overwrites marks someone has typed: it only fills empty ones.
 import random
 import secrets
 import sys
+import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 
 from app.core.db import SessionLocal
 from app.models import (
-    AcademicSession, Assignment, Branch, ClassSubject, Notice, ReportCard, School, SchoolClass, Score, Student, Subject, Submission, Term,
+    AcademicSession, Assignment, Branch, ClassSubject, ConductEntry, Notice, ReportCard, School, SchoolClass, Score, Student, Subject, Submission, Term,
 )
 from app.models.people import StudentStatus
 
@@ -74,7 +76,10 @@ def fill(db, c: SchoolClass, term: Term, school_id, full: bool, rnd: random.Rand
                     continue
                 kind = 12 if generous and "exam" not in col["key"].lower() else 0
                 pct = max(8, min(99, skill(s.id, cs.subject_id, step) + bias / 2 + kind + rnd.gauss(0, 6))) / 100
-                db.add(Score(term_id=term.id, student_id=s.id, subject_id=cs.subject_id, component=col["key"], value=round(col["max"] * pct * 2) / 2, by_id=cs.teacher_user_id))
+                if random.Random(f"{s.id}{col['key']}{term.id}").random() < (.004 if "exam" in col["key"].lower() else .012):      # missed the test (ill, away for a match...)
+                    db.add(Score(term_id=term.id, student_id=s.id, subject_id=cs.subject_id, component=col["key"], value=None, absent=True, by_id=cs.teacher_user_id))
+                else:
+                    db.add(Score(term_id=term.id, student_id=s.id, subject_id=cs.subject_id, component=col["key"], value=round(col["max"] * pct * 2) / 2, by_id=cs.teacher_user_id))
                 added += 1
     db.flush()
     if not quiet:
@@ -386,6 +391,101 @@ def homework(db, c: SchoolClass, term: Term, studs: list[Student], rnd: random.R
     return n
 
 
+def rules_and_blocks(db, school, term: Term) -> None:
+    """The school's result rules (year-group position, Honours and Merits, probation, missed tests), and JMC-style weighted
+    blocks with grade words for the senior classes, so both ways of adding up scores can be tried side by side."""
+    from app.api.structure import GRADING_PRESETS, WEIGHTED_PRESETS, make_components, preset_components
+    from app.models import AssessmentScheme, GradeBand, GradingScale, ResultSettings, Section
+    stg = db.scalar(select(ResultSettings).where(ResultSettings.school_id == school.id))
+    if not stg:
+        stg = ResultSettings(school_id=school.id, checks=1, confirm_days=5)
+        db.add(stg)
+    if not stg.awards:
+        stg.absent_rule, stg.rank_by = "substitute", "level"
+        stg.awards = [{"name": "Honours", "min": 75, "top": None}, {"name": "Merits", "min": 68, "top": None}]
+        stg.probation = {"line": 50, "fails": 3, "drop": 10}
+    print("  Rules: position across the whole year group; Honours from 75%, Merits from 68%; probation below 50% or failing 3 subjects; a missed test uses the next score of its kind.")
+    senior = [x for x in db.scalars(select(Section).where(Section.school_id == school.id)) if any(str(lv).upper().startswith("SS") for lv in (x.levels or []))]
+    if not senior:
+        ss = sorted({c.level for c in db.scalars(select(SchoolClass).join(Branch, Branch.id == SchoolClass.branch_id).where(Branch.school_id == school.id))
+                     if c.level and c.level.upper().startswith("SS")})
+        if not ss:
+            return
+        # The junior classes keep the usual CA1 20 + CA2 20 + Exam 60, in a section of their own.
+        js = sorted({c.level for c in db.scalars(select(SchoolClass).join(Branch, Branch.id == SchoolClass.branch_id).where(Branch.school_id == school.id))
+                     if c.level and not c.level.upper().startswith("SS")})
+        std = db.scalar(select(AssessmentScheme).where(AssessmentScheme.school_id == school.id).order_by(AssessmentScheme.created_at))
+        if not std:
+            std = AssessmentScheme(school_id=school.id, name="Standard", method="add", components=make_components(preset_components("CA1, CA2 and exam (20 + 20 + 60)")))
+            db.add(std)
+            db.flush()
+        waec = db.scalar(select(GradingScale).where(GradingScale.school_id == school.id).order_by(GradingScale.created_at))
+        if not waec:
+            waec = GradingScale(school_id=school.id, name="WAEC", bands=[GradeBand(grade=g, min_score=lo, max_score=hi, remark=r) for g, lo, hi, r in GRADING_PRESETS["WAEC (A1 to F9)"]])
+            db.add(waec)
+            db.flush()
+        if js and not db.scalar(select(Section.id).where(Section.school_id == school.id, Section.name == "Junior Secondary")):
+            db.add(Section(school_id=school.id, name="Junior Secondary", position=1, levels=js, assessment_scheme_id=std.id, grading_scale_id=waec.id))
+        senior = [Section(school_id=school.id, name="Senior Secondary", position=2, levels=ss)]
+        db.add(senior[0])
+    levels = [lv for x in senior for lv in (x.levels or [])]
+    marked = db.scalar(select(Score.id).join(Student, Student.id == Score.student_id).join(SchoolClass, SchoolClass.id == Student.class_id).where(
+        Score.term_id == term.id, SchoolClass.level.in_(levels)).limit(1))
+    if marked:
+        return                                         # never change the way a section adds up once marks are in
+    key = next(iter(WEIGHTED_PRESETS))
+    sch = db.scalar(select(AssessmentScheme).where(AssessmentScheme.school_id == school.id, AssessmentScheme.name == "Senior: weighted blocks"))
+    if not sch:
+        sch = AssessmentScheme(school_id=school.id, name="Senior: weighted blocks", method="weighted", components=make_components(preset_components(key)))
+        db.add(sch)
+    words = "Words (Excellent to Fail)"
+    sc = db.scalar(select(GradingScale).where(GradingScale.school_id == school.id, GradingScale.name == words))
+    if not sc:
+        sc = GradingScale(school_id=school.id, name=words, bands=[GradeBand(grade=g, min_score=lo, max_score=hi, remark=r) for g, lo, hi, r in GRADING_PRESETS[words]])
+        db.add(sc)
+    db.flush()
+    for x in senior:
+        x.assessment_scheme_id, x.grading_scale_id = sch.id, sc.id
+    db.flush()
+    print(f"  {', '.join(x.name for x in senior)}: three weighted blocks (20% CE + 20% CE + 60% CA/Exam, each out of 100), averaged; grades in words (Excellent to Fail).")
+
+
+def probation_demo(db, school, term: Term, c: SchoolClass) -> None:
+    """Scan for students who are failing, and show a case at every stage."""
+    from app.api.probation import log, scan
+    from app.models import ProbationCase
+    r = scan(db, school, term, why="sample data")
+    cases = list(db.scalars(select(ProbationCase).where(ProbationCase.term_id == term.id, ProbationCase.school_id == school.id).order_by(ProbationCase.average)))
+    mine = [x for x in cases if db.get(Student, x.student_id).class_id == c.id] + [x for x in cases if db.get(Student, x.student_id).class_id != c.id]
+    today = datetime.now(timezone.utc).date()
+    for i, case in enumerate(mine[:3]):
+        if case.plan:
+            continue
+        s = db.get(Student, case.student_id)
+        weak = [w["subject"] for w in case.weak[:2]] or ["Mathematics"]
+        form = next((m for m in case.team if m["role"] == "Form teacher"), None)
+        case.plan = (f"1. Extra lessons in {' and '.join(weak)}: Tuesday and Thursday, 3:15 to 4:00 pm.\n"
+                     f"2. The form teacher checks {s.first_name}'s homework diary every morning.\n"
+                     f"3. At home: one hour of quiet study every evening; a parent signs the diary.\n"
+                     f"4. {s.first_name} sits in front in {weak[0]} and asks one question each lesson.")
+        case.status, case.review_on = ("review" if i == 0 else "plan"), today + timedelta(days=21)
+        case.actions = [{"id": secrets.token_hex(4), "what": f"Extra {weak[0]} lessons, Tue and Thu after school", "who": next((m["name"] for m in case.team if m["role"].startswith(weak[0])), "Subject teacher"),
+                         "due": None, "done": (datetime.now(timezone.utc) - timedelta(days=3)).isoformat() if i == 0 else None, "by": "Sample data"},
+                        {"id": secrets.token_hex(4), "what": "Daily homework diary check", "who": form["name"] if form else "Form teacher", "due": None, "done": None, "by": "Sample data"},
+                        {"id": secrets.token_hex(4), "what": "Meet the parents", "who": form["name"] if form else "Form teacher", "due": (today + timedelta(days=7)).isoformat(), "done": None, "by": "Sample data"}]
+        log(case, "Sample data", "Wrote the support plan")
+        if i == 0:
+            case.meetings = [{"id": secrets.token_hex(4), "on": today.isoformat(), "with": f"{s.first_name}, the mother and the form teacher",
+                              "notes": f"{s.first_name} has been unwell and fell behind. Agreed: extra lessons, diary checks, no phone on school nights. Review in three weeks.", "by": "Sample data"}]
+            if case.family_told:
+                g = next(iter(s.guardians), None)
+                if g:
+                    case.parent_ack_at, case.parent_ack_by, case.parent_note = datetime.now(timezone.utc) - timedelta(days=2), g.user_id, "Thank you. We will sign the diary every night."
+                    log(case, "Parent", "Parent acknowledged the plan")
+    db.flush()
+    print(f"  Probation: {len(cases)} students flagged ({r['families_told']} families told, as their marks are published); three cases have a plan, one has a meeting and a parent's signature.")
+
+
 def results(school_part: str | None = None, class_name: str | None = None) -> None:
     from app.api.academics import _level_order
     rnd = random.Random(7)
@@ -400,6 +500,8 @@ def results(school_part: str | None = None, class_name: str | None = None) -> No
         return
     print(f"School: {school.name}")
     term = term_now(db, school)
+    rules_and_blocks(db, school, term)
+    db.flush()
     classes = sorted(db.scalars(select(SchoolClass).join(Branch, Branch.id == SchoolClass.branch_id).where(Branch.school_id == school.id)), key=lambda c: (_level_order(c.level), c.name))
     def size(c):
         return db.scalar(select(func.count()).select_from(Student).where(Student.class_id == c.id, Student.status == StudentStatus.active)) or 0
@@ -427,6 +529,8 @@ def results(school_part: str | None = None, class_name: str | None = None) -> No
     db.flush()
     n = report_cards(db, c, term, studs, rnd)
     h = homework(db, c, term, studs, rnd)
+    db.flush()
+    probation_demo(db, school, term, c)
     db.commit()
     print(f"  {c.name}: {n} report cards written and published, {h} pieces of homework set.")
     print(f"\nTry it: Scores and results page of {school.name}; open {c.name}" + (f", {other.name}" if other else "") + (f" and {third.name}" if third else "") + ".")
@@ -435,9 +539,154 @@ def results(school_part: str | None = None, class_name: str | None = None) -> No
     print(f"Log in as a {c.name} student or parent to see Homework and Results.")
 
 
+def discipline(school_part: str | None = None, class_name: str | None = None) -> None:
+    """Discipline cases at every stage, so the POD, the principal, a house master, a form teacher and a parent each have something to see."""
+    from app.api import discipline as dp
+    from app.models import DisciplineCase, Membership, Role
+    db = SessionLocal()
+    schools = list(db.scalars(select(School).order_by(School.name)))
+    def roll(s):
+        return db.scalar(select(func.count()).select_from(Student).where(Student.school_id == s.id, Student.status == StudentStatus.active)) or 0
+    matching = [s for s in schools if not school_part or school_part.lower() in s.name.lower()] or schools
+    school = max(matching, key=roll, default=None)
+    if not school or not roll(school):
+        print("No school with students yet.")
+        return
+    print(f"School: {school.name}")
+    if db.scalar(select(DisciplineCase.id).where(DisciplineCase.school_id == school.id).limit(1)):
+        print("  This school already has discipline cases: nothing added.")
+        return
+    st = dp.settings(db, school.id)
+    vps = sorted(dp.rights.school_roles_users(db, school.id, {"vice_principal"}), key=str)
+    teachers = sorted(dp.rights.school_roles_users(db, school.id, {"teacher"}), key=str)
+    head = next(iter(sorted(dp.deciders(db, school), key=str)), None)
+    if not vps or not teachers:
+        print("  Needs a vice principal (to be the POD) and teachers.")
+        return
+    st.pod_user_ids = [str(vps[0])]
+    db.add(st)
+    db.flush()
+    classes = {c.name: c for c in db.scalars(select(SchoolClass).join(Branch, Branch.id == SchoolClass.branch_id).where(Branch.school_id == school.id))}
+    def kids(name, n):
+        c = classes.get(name) or next(iter(classes.values()))
+        return list(db.scalars(select(Student).where(Student.class_id == c.id, Student.status == StudentStatus.active).order_by(Student.last_name, Student.first_name)))[:n]
+    jss = kids(class_name or "JSS 2C", 12)
+    ss1, ss2 = kids("SS 1A", 6), kids("SS 2A", 6)
+    boarders = [s for s in [*ss1, *ss2, *jss] if dp.house_master(db, s)]
+    t = lambda d=0, h=10: datetime.now(timezone.utc).replace(hour=h, minute=0, second=0, microsecond=0) + timedelta(days=d)
+    today = datetime.now(timezone.utc).date()
+    offs = {o["key"]: o for o in st.offences}
+    pod_name, head_name = dp.name_of(db, vps[0]), dp.name_of(db, head) or "The principal"
+    n = 0
+    def case(s, key, status, days, details, by, place=None, group=None, statements=(), rec=None, decision=None, actions=(), extra=""):
+        nonlocal n
+        o = offs[key]
+        x = DisciplineCase(id=uuid.uuid4(), created_at=t(days, 12), school_id=school.id, number=dp.next_number(db, school.id), student_id=s.id if s else None, group=group,
+                           offence=o["key"], offence_name=o["name"], level=o["level"], occurred_at=t(days, 11), place=place, details=details,
+                           reported_by_id=by, reporter_kind="staff", status=status, statements=[], actions=[], history=[], recommendation=rec)
+        db.add(x)
+        db.flush()
+        dp.log(x, dp.name_of(db, by) or "Staff", "Reported" + extra)
+        x.statements = [{"id": secrets.token_hex(4), "who": w, "text": tx, "at": t(days + 1, 9).isoformat(), "by": pod_name} for w, tx in statements]
+        for w, _ in statements:
+            dp.log(x, pod_name, f"Took a statement from {w}")
+        if rec:
+            dp.log(x, pod_name, "Sent to the principal with a recommendation")
+        if decision:
+            x.status, x.decision, x.decided_by_id, x.decided_at = "decided", decision, head, t(days + 2, 12)
+            x.actions = [{"id": secrets.token_hex(4), "label": dp.KINDS[a["kind"]], "name": None, "points": None, "on": None, "until": None, "at": None,
+                          "note": None, "in_school": None, "done": None, **a} for a in actions]
+            dp.log(x, head_name, "Decided: " + "; ".join(dp.say(a) for a in x.actions))
+            for a in x.actions:
+                if a["kind"] == "demerit":
+                    db.add(ConductEntry(school_id=school.id, student_id=s.id, house_id=s.house_id, kind="demerit", category="discipline", points=-a["points"],
+                                        note=f"Case #{x.number}: {x.offence_name}", by_id=head))
+        # Put the history on the days things happened.
+        stamps = [t(days, 12)] + [t(days + 1, 9)] * len(statements) + ([t(days + 1, 15)] if rec else []) + ([t(days + 2, 12)] if decision else [])
+        x.history = [{**h, "at": stamps[min(i, len(stamps) - 1)].isoformat()} for i, h in enumerate(x.history)]
+        n += 1
+        return x
+    d = lambda k: (today + timedelta(days=k)).isoformat()
+    T1, T2, T3 = teachers[0], teachers[1 % len(teachers)], teachers[2 % len(teachers)]
+    # 1-2. A fight, two students: with the principal, the POD's recommendation in.
+    g = secrets.token_hex(4)
+    a, b = jss[1], jss[4]
+    for me, other in ((a, b), (b, a)):
+        case(me, "fighting", "principal", -3, f"{a.first_name} and {b.first_name} fought at the back of the class after break. {a.first_name} was pushed into a desk; no one was badly hurt.",
+             T1, "JSS 2 block, classroom", g,
+             [(f"{me.first_name} (the student)", f"{other.first_name} took my pen and would not give it back, so I pushed them and they hit me back."),
+              ("Class captain", "They were shouting at each other and then started fighting. We separated them before the teacher came.")],
+             rec=f"Both students fought. I recommend 5 demerit points each, manual work on the compound for three days, and counselling. {me.first_name} has no earlier case.")
+    # 3. A phone: decided, parents invited (families see it).
+    p = jss[0]
+    case(p, "phone", "decided", -6, f"A phone was found in {p.first_name}'s bag during the morning bag check.", T2, "Morning assembly", statements=[
+         (f"{p.first_name} (the student)", "It is my brother's old phone. I only used it to call home.")],
+         decision="The phone stays with the school until a parent collects it. Loss of outing for this term, 4 demerit points, and the parents are invited.",
+         actions=[{"kind": "punishment", "name": "Loss of privileges (outing, visiting day, TV)"}, {"kind": "demerit", "points": 4},
+                  {"kind": "invite_parents", "on": d(3), "at": "10:00", "note": "Come to the POD's office to collect the phone."}])
+    # 4. Lateness: with the POD (minor, the POD may deal with it).
+    case(jss[7], "late", "pod", -1, f"{jss[7].first_name} came to school at 8:25 for the third time this week.", T3, "School gate")
+    # 5. Boarding: out of bounds, with the house master first.
+    if boarders:
+        bo = boarders[0]
+        case(bo, "bounds", "house", 0, f"{bo.first_name} was found behind the girls' hostel during prep.", T1, "Behind the hostel, 8:40 pm",
+             extra=" (goes to the house master first)")
+    # 6. Stealing: suspended now (SS 1), parents came.
+    if ss1:
+        th = ss1[2 % len(ss1)]
+        case(th, "stealing", "decided", -5, f"Provisions and ₦3,500 went missing from a locker. They were found in {th.first_name}'s bag.", T2, "SS 1 classroom lockers", statements=[
+             (f"{th.first_name} (the student)", "I took them. I am sorry."), ("Class prefect", "We found the items when the bags were checked.")],
+             rec="Suspension for one week, return of the items, and counselling.",
+             decision="Suspended for one week. The items are returned and the parents pay back the money. Counselling when back.",
+             actions=[{"kind": "suspension", "on": d(-3), "until": d(4)}, {"kind": "invite_parents", "on": d(-3), "at": "12:00", "done": t(-3, 13).isoformat()},
+                      {"kind": "counselling", "name": "With the school counsellor, weekly for a month"}])
+    # 7. Discipline probation: SS 2 bullying.
+    if ss2:
+        bu = ss2[1 % len(ss2)]
+        case(bu, "bullying", "decided", -12, f"{bu.first_name} has been taking junior students' provisions and making them do washing for them.", T3, "Hostel", statements=[
+             ("Two JSS 1 students", "Our provisions are taken every Sunday and we are told not to report.")],
+             rec="Discipline probation for the rest of the term, apology to the juniors, and counselling.",
+             decision="Discipline probation until the end of term. Any further offence means suspension.",
+             actions=[{"kind": "probation", "on": d(-9), "until": d(45)}, {"kind": "punishment", "name": "Letter of apology", "done": t(-8, 12).isoformat()},
+                      {"kind": "counselling", "name": "Weekly with the guidance counsellor"}])
+    # 8. Detention coming up (decided by the POD).
+    dd = jss[9 % len(jss)]
+    case(dd, "noise", "decided", -2, f"{dd.first_name} kept disturbing the class during the Mathematics lesson after two warnings.", T1, "Classroom",
+         decision="Detention on Friday after school.", actions=[{"kind": "detention", "on": d((4 - today.weekday()) % 7 or 7), "at": "14:15"}, {"kind": "demerit", "points": 1}])
+    # 9. Dropped.
+    x = case(jss[10 % len(jss)], "damage", "dismissed", -8, "A broken window in the JSS 2 block. A student said this student did it.", T2, "JSS 2 block")
+    x.decision = "Not proven: the window was broken by the wind (the latch was already loose). Reported to maintenance."
+    dp.log(x, pod_name, "Dropped: " + x.decision)
+    # 10. A student's tip, in confidence.
+    tipper = ss1[0] if ss1 else jss[11 % len(jss)]
+    tp = DisciplineCase(id=uuid.uuid4(), school_id=school.id, number=dp.next_number(db, school.id), student_id=None, about="Some SS 2 boys in the hostel",
+                        offence="tip", offence_name="Told by a student", level="minor", occurred_at=t(-1, 21), place="Hostel, after lights out",
+                        details="Some SS 2 boys go out through the back fence at night after lights out and come back before the morning bell.",
+                        reported_by_id=tipper.user_id, reporter_kind="student", status="tip", statements=[], actions=[], history=[])
+    db.add(tp)
+    db.flush()
+    dp.log(tp, "A student", "Told the POD in confidence")
+    n += 1
+    # 11. The ladder: demerits this term reach the detention line.
+    lad = jss[6 % len(jss)]
+    for cat, pts in (("late", -1), ("uniform", -1), ("homework", -1), ("noise", -1), ("disrespect", -2), ("phone", -2), ("bounds", -2)):
+        db.add(ConductEntry(school_id=school.id, student_id=lad.id, house_id=lad.house_id, kind="demerit", category=cat, points=pts, by_id=T1))
+    db.flush()
+    lc = dp.ladder_check(db, lad, "Sample data")
+    db.commit()
+    print(f"  POD: {pod_name}. Principal: {head_name}. {n + (1 if lc else 0)} cases:")
+    print(f"   - with the principal: a fight between {a.full_name} and {b.full_name} (the POD's recommendation is in)")
+    print(f"   - decided: {p.full_name} (phone; parents invited in 3 days)" + (f", {th.full_name} (suspended this week)" if ss1 else "")
+          + (f", {bu.full_name} (discipline probation)" if ss2 else "") + f", {dd.full_name} (detention on Friday)")
+    print(f"   - with the POD: {jss[7].full_name} (lateness)" + (f"; with the house master: {bo.full_name} (out of bounds)" if boarders else "")
+          + "; a student's tip about the SS 2 boys" + (f"; {lad.full_name} reached 10 demerit points (opened by itself)" if lc else ""))
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
-    if not args or args[0] not in ("results",):
+    if not args or args[0] not in ("results", "discipline"):
         print(__doc__)
+    elif args[0] == "discipline":
+        discipline(*(args[1:3]))
     else:
         results(*(args[1:3]))

@@ -1,3 +1,4 @@
+import { DisciplineTab } from "./Discipline";
 import { ResultsOverview } from "./Assessment";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
@@ -69,6 +70,7 @@ const TAB_LABEL: Record<SchoolTab, string> = {
   admissions: "Admissions",
   timetable: "Timetable",
   results: "Scores and results",
+  discipline: "Discipline",
 };
 
 // Which area of rights each page belongs to.
@@ -76,7 +78,7 @@ export const TAB_AREA: Record<SchoolTab, string> = {
   overview: "school", students: "students", attendance: "attendance", classes: "classes", staff: "staff", facilities: "facilities",
   sections: "setup", departments: "setup", houses: "setup", grading: "setup", calendar: "setup", policies: "setup",
   imports: "imports", logins: "logins", teaching: "teaching", "staff-day": "staff_day", growth: "growth", operations: "operations", rights: "rights",
-  library: "library", assets: "facilities", admissions: "students", timetable: "teaching", results: "results",
+  library: "library", assets: "facilities", admissions: "students", timetable: "teaching", results: "results", discipline: "discipline",
 };
 function tabOpen(rights: Set<string>, t: SchoolTab): boolean {
   const a = TAB_AREA[t];
@@ -189,6 +191,7 @@ export default function SchoolPage({
           {tab === "admissions" && <AdmissionsPage schoolId={school.id} />}
           {tab === "timetable" && <TimetablePage schoolId={school.id} />}
           {tab === "results" && <ResultsOverview schoolId={school.id} />}
+          {tab === "discipline" && <DisciplineTab schoolId={school.id} />}
               </div>
               </AreaContext.Provider>
               )}
@@ -237,7 +240,7 @@ function SchoolHero({ school, profile, onRename, onManage }: {
 }
 
 const NAV_GROUPS: { label: string; tabs: SchoolTab[] }[] = [
-  { label: "Daily", tabs: ["overview", "students", "admissions", "attendance", "classes", "teaching", "timetable", "results", "staff", "staff-day", "growth", "operations", "library", "facilities", "assets"] },
+  { label: "Daily", tabs: ["overview", "students", "admissions", "attendance", "classes", "teaching", "timetable", "results", "discipline", "staff", "staff-day", "growth", "operations", "library", "facilities", "assets"] },
   { label: "Set-up", tabs: ["sections", "departments", "houses", "grading", "calendar", "policies", "imports", "logins", "rights"] },
 ];
 

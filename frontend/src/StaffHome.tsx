@@ -18,6 +18,8 @@ import { MyLessonsCard } from "./Timetable";
 import { MarkingCard } from "./Assessment";
 import { ToCheckCard } from "./ScoreControl";
 import { AnalysisCard } from "./Analysis";
+import { ProbationCard } from "./Probation";
+import { DisciplineCard } from "./Discipline";
 import { ClubRequestsCard } from "./StudentPortal";
 
 interface Today { total: number; marked: number; present: number; absent: number }
@@ -217,6 +219,8 @@ function SchoolPortal({ s, me, reload }: { s: SchoolHome; me: Me; reload: () => 
       <MyDayCard schoolId={s.school_id} />
       {s.teaching && <MyLessonsCard schoolId={s.school_id} />}
       <ToCheckCard />
+      <ProbationCard />
+      <DisciplineCard schoolId={s.school_id} />
       <AnalysisCard />
       {s.teaching && <MarkingCard />}
       <ClubRequestsCard schoolId={s.school_id} />

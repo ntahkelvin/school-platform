@@ -135,7 +135,7 @@ def _copy_setup(db: Session, src: School, dst: School) -> list[str]:
         scale_map[sc.id] = new.id
     scheme_map: dict[uuid.UUID, uuid.UUID] = {}
     for sc in db.scalars(select(AssessmentScheme).where(AssessmentScheme.school_id == src.id)):
-        new = AssessmentScheme(school_id=dst.id, name=sc.name, components=[
+        new = AssessmentScheme(school_id=dst.id, name=sc.name, method=sc.method, components=[
             AssessmentComponent(name=c.name, max_score=c.max_score, position=c.position, parts=list(c.parts or []))
             for c in sc.components])
         db.add(new)

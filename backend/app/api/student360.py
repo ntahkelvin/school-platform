@@ -561,6 +561,10 @@ def give_conduct(student_id: uuid.UUID, data: ConductIn, user: User = Depends(cu
     base = (MERITS if kind == "merit" else DEMERITS)[data.category][1]
     pts = data.points if data.points is not None and (data.points > 0) == (base > 0) and data.points != 0 else base
     db.add(ConductEntry(school_id=s.school_id, student_id=s.id, house_id=s.house_id, kind=kind, category=data.category, points=pts, note=data.note, by_id=user.id))
+    if pts < 0:
+        db.flush()
+        from app.api.discipline import ladder_check
+        ladder_check(db, s, user.full_name)
     db.commit()
     return profile(student_id, user, db)
 

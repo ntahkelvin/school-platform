@@ -48,7 +48,15 @@ def authority(db: Session, user: User, school: School) -> bool:
 
 def settings(db: Session, school_id: uuid.UUID) -> ResultSettings:
     s = db.scalar(select(ResultSettings).where(ResultSettings.school_id == school_id))
-    return s or ResultSettings(school_id=school_id, checks=1, confirm_days=5)
+    return s or ResultSettings(school_id=school_id, checks=1, confirm_days=5, absent_rule="substitute", rank_by="class", awards=[], probation={})
+
+
+PROBATION_DEFAULT = {"line": 50, "fails": 3, "drop": 10}
+
+
+def settings_out(s: ResultSettings) -> dict:
+    return {"checks": s.checks, "confirm_days": s.confirm_days, "absent_rule": s.absent_rule or "substitute", "rank_by": s.rank_by or "class",
+            "awards": sorted(s.awards or [], key=lambda a: -(a.get("min") or 0)), "probation": {**PROBATION_DEFAULT, **(s.probation or {})}}
 
 
 def log(step, user: User | None, action: str, note: str | None = None) -> None:
@@ -246,6 +254,9 @@ def check(scope: str, data: CheckIn, user: User = Depends(current_user), db: Ses
             notify(db, [sc.teacher_id], sc.school.id, f"{data.component} for {sc.title()} is approved.", f"#/sheet/{sc.key}", "circle-check")
             from app.api.scorebook import on_approved
             on_approved(db, sc, term, data.component, first)
+            db.flush()
+            from app.api.probation import safe_scan
+            safe_scan(db, sc.school, term, {x.class_id for x in sc.students()}, f"{data.component} {sc.subject.name} approved")
     db.commit()
     return {"status": st.status, "label": STATUS_LABEL[st.status]}
 
@@ -388,13 +399,29 @@ def control(school_id: uuid.UUID, term_id: uuid.UUID | None = None, user: User =
     from app.api.staff_day import staff_ids
     teachers = sorted(({"id": str(u.id), "name": u.full_name} for u in db.scalars(select(User).where(User.id.in_(list(staff_ids(db, school.id)) or [uuid.uuid4()])))),
                       key=lambda x: x["name"])
-    return {"term": term_out(term), "settings": {"checks": stg.checks, "confirm_days": stg.confirm_days}, "components": wins, "classes": rows,
+    return {"term": term_out(term), "settings": settings_out(stg), "components": wins, "classes": rows,
             "can_publish": authority(db, user, school), "teachers": teachers}
+
+
+class AwardIn(BaseModel):
+    name: str = Field(min_length=2, max_length=30)
+    min: float = Field(ge=0, le=100)                 # lowest term average for this award
+    top: int | None = Field(default=None, ge=1, le=500)   # and, if set, only the best N in the year group
+
+
+class ProbationIn(BaseModel):
+    line: float = Field(default=50, ge=0, le=100)    # term average below this: probation
+    fails: int = Field(default=3, ge=0, le=20)       # or failing this many subjects (0: don't use)
+    drop: float = Field(default=10, ge=0, le=100)    # or dropping this many points since last term (0: don't use)
 
 
 class SettingsIn(BaseModel):
     checks: int = Field(ge=1, le=2)
     confirm_days: int = Field(ge=1, le=30)
+    absent_rule: str | None = Field(default=None, pattern="^(substitute|reweight|zero)$")
+    rank_by: str | None = Field(default=None, pattern="^(class|level)$")
+    awards: list[AwardIn] | None = Field(default=None, max_length=6)
+    probation: ProbationIn | None = None
 
 
 @router.put("/schools/{school_id}/result-settings")
@@ -402,9 +429,21 @@ def save_settings(school_id: uuid.UUID, data: SettingsIn, user: User = Depends(c
     need_school(db, user, school_id, power=True)
     s = db.scalar(select(ResultSettings).where(ResultSettings.school_id == school_id)) or ResultSettings(school_id=school_id)
     s.checks, s.confirm_days = data.checks, data.confirm_days
+    if data.absent_rule:
+        s.absent_rule = data.absent_rule
+    if data.rank_by:
+        s.rank_by = data.rank_by
+    if data.awards is not None:
+        names = [a.name.lower() for a in data.awards]
+        if len(set(names)) != len(names):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Each award needs a different name")
+        s.awards = [a.model_dump() for a in sorted(data.awards, key=lambda a: -a.min)]
+    if data.probation is not None:
+        s.probation = data.probation.model_dump()
+    s.absent_rule, s.rank_by = s.absent_rule or "substitute", s.rank_by or "class"
     db.add(s)
     db.commit()
-    return {"checks": s.checks, "confirm_days": s.confirm_days}
+    return settings_out(s)
 
 
 class WindowIn(BaseModel):
@@ -465,22 +504,33 @@ def close_again(oid: uuid.UUID, user: User = Depends(current_user), db: Session 
 # ---------- Publishing one test, and the padlock ----------
 
 def snapshot(db: Session, c: SchoolClass, term: Term, comp: str) -> tuple[dict, int]:
-    from app.api.assessment import class_subjects, columns_of, scheme_for
+    """Each student's score in one test, as families will see it: {student: {subject: {score, max, absent, parts, borrowed}}}."""
+    from app.api.assessment import absent_rule, class_subjects, columns_of, scheme_for, work_out
     school_id = db.get(Branch, c.branch_id).school_id
     scheme = scheme_for(db, school_id, c.level)
     mx = next((x["max"] for x in scheme if x["name"] == comp), None)
     keys = [x["key"] for x in columns_of(scheme) if comp_of(x["key"]) == comp]
     studs = list(db.scalars(select(Student).where(Student.class_id == c.id, Student.status == StudentStatus.active)))
     subs = {sub.id: sub.name for sub, _ in class_subjects(db, c, studs)}
+    rule = absent_rule(db, school_id)
+    raw: dict = defaultdict(dict)
+    gone: dict = defaultdict(set)
+    for r in db.scalars(select(Score).where(Score.term_id == term.id, Score.student_id.in_([s.id for s in studs] or [uuid.uuid4()]))):
+        if r.subject_id in subs:
+            raw[(r.student_id, r.subject_id)][r.component] = r.value
+            if r.absent:
+                gone[(r.student_id, r.subject_id)].add(r.component)
     out: dict = defaultdict(dict)
-    for r in db.scalars(select(Score).where(Score.term_id == term.id, Score.student_id.in_([s.id for s in studs] or [uuid.uuid4()]), Score.component.in_(keys))):
-        if r.subject_id not in subs:
+    for (sid, sub_id), marks in raw.items():
+        if not any(marks.get(k) is not None or k in gone[(sid, sub_id)] for k in keys):
             continue
-        x = out[str(r.student_id)].setdefault(subs[r.subject_id], {"score": None, "max": mx, "absent": False})
-        if r.absent:
-            x["absent"] = True
-        elif r.value is not None:
-            x["score"] = round((x["score"] or 0) + r.value, 1)
+        w = work_out(scheme, marks, gone[(sid, sub_id)], rule)
+        x = {"score": w["comp"].get(comp), "max": mx, "absent": all(k in gone[(sid, sub_id)] for k in keys)}
+        if len(keys) > 1 or keys[0] != comp:
+            x["parts"] = {k.split(" › ")[-1]: ("ABS" if k in gone[(sid, sub_id)] else marks.get(k)) for k in keys}
+        if any(k in w["subs"] for k in keys):
+            x["borrowed"] = {k.split(" › ")[-1]: w["subs"][k].split(" › ")[-1] for k in keys if k in w["subs"]}
+        out[str(sid)][subs[sub_id]] = x
     return dict(out), len(studs)
 
 
@@ -527,6 +577,9 @@ def publish_test(school_id: uuid.UUID, data: ReleaseIn, user: User = Depends(cur
         for s in db.scalars(select(Student).where(Student.class_id == c.id, Student.status == StudentStatus.active)):
             notify(db, family_of(s), school.id, f"{s.first_name}'s {data.component} scores for {term.name} are out" + (" (corrected)" if again else "") + ".", f"#/child/{s.id}", "chart")
         n += 1
+    db.flush()
+    from app.api.probation import safe_scan
+    safe_scan(db, school, term, set(data.class_ids), f"{data.component} published")
     db.commit()
     return {"published": n}
 

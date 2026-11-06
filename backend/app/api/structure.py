@@ -127,7 +127,7 @@ def staff_options(school_id: uuid.UUID, user: User = Depends(current_user), db: 
 # ======================= Grading scales =======================
 
 class BandIn(In):
-    grade: str = Field(min_length=1, max_length=10)
+    grade: str = Field(min_length=1, max_length=20)
     min_score: int = Field(ge=0, le=100)
     max_score: int = Field(ge=0, le=100)
     remark: str = Field(default="", max_length=50)
@@ -160,6 +160,10 @@ GRADING_PRESETS: dict[str, list[tuple[str, int, int, str]]] = {
     "Basic (A to F)": [
         ("A", 70, 100, "Excellent"), ("B", 60, 69, "Very good"), ("C", 50, 59, "Good"), ("D", 45, 49, "Fair"),
         ("E", 40, 44, "Poor"), ("F", 0, 39, "Fail"),
+    ],
+    "Words (Excellent to Fail)": [
+        ("Excellent", 85, 100, "Outstanding work"), ("Good", 75, 84, "Good work"), ("Satisfactory", 65, 74, "Fair, can do better"),
+        ("Probation", 50, 64, "Below standard: needs support"), ("Fail", 0, 49, "Failing: needs urgent help"),
     ],
 }
 
@@ -239,7 +243,8 @@ def delete_scale(scale_id: uuid.UUID, user: User = Depends(current_user), db: Se
 
 class PartIn(In):
     name: str = Field(min_length=1, max_length=50)
-    max_score: int = Field(ge=1, le=100)
+    max_score: int = Field(ge=1, le=100)           # "add": its marks. "weighted": what it is marked out of (often 100)
+    weight: float | None = Field(default=None, ge=0, le=100)   # "weighted" only: its share of the block, in %
 
 
 class ComponentIn(In):
@@ -250,12 +255,14 @@ class ComponentIn(In):
 
 class SchemeIn(In):
     name: str = Field(min_length=2, max_length=100)
+    method: str = Field(default="add", pattern="^(add|weighted)$")
     components: list[ComponentIn] = Field(min_length=1)
 
 
 class PartOut(BaseModel):
     name: str
     max_score: int
+    weight: float | None = None
 
 
 class ComponentOut(BaseModel):
@@ -267,6 +274,7 @@ class ComponentOut(BaseModel):
 
 class SchemeOut(Out):
     name: str
+    method: str = "add"
     components: list[ComponentOut]
 
 
@@ -283,18 +291,53 @@ ASSESSMENT_PRESETS: dict[str, list[tuple[str, int, list[tuple[str, int]]]]] = {
     "CA and exam (30 + 70)": [("CA", 30, []), ("Exam", 70, [])],
 }
 
+# Weighted presets: blocks, each marked out of 100 and averaged. Items are (name, out of, weight % in the block).
+WEIGHTED_PRESETS: dict[str, list[tuple[str, int, list[tuple[str, int, float]]]]] = {
+    "Three blocks, each 20% + 20% + 60%, then the average (like JMC)": [
+        ("Block 1", 100, [("CE1", 100, 20), ("CE2", 100, 20), ("CA1", 100, 60)]),
+        ("Block 2", 100, [("CE3", 100, 20), ("CE4", 100, 20), ("CA2", 100, 60)]),
+        ("Block 3", 100, [("CE5", 100, 20), ("PR", 100, 20), ("Exam", 100, 60)]),
+    ],
+    "Two blocks: CA (tests 50% + classwork 50%) and exam, then the average": [
+        ("CA", 100, [("Test 1", 100, 25), ("Test 2", 100, 25), ("Classwork", 100, 50)]),
+        ("Exam", 100, []),
+    ],
+}
+
+
+def preset_method(name: str) -> str:
+    return "weighted" if name in WEIGHTED_PRESETS else "add"
+
 
 def preset_components(name: str) -> list["ComponentIn"]:
+    if name in WEIGHTED_PRESETS:
+        return [ComponentIn(name=n, max_score=m, parts=[PartIn(name=pn, max_score=po, weight=pw) for pn, po, pw in parts])
+                for n, m, parts in WEIGHTED_PRESETS[name]]
     return [
         ComponentIn(name=n, max_score=m, parts=[PartIn(name=pn, max_score=pm) for pn, pm in parts])
         for n, m, parts in ASSESSMENT_PRESETS[name]
     ]
 
 
-def check_components(components: list[ComponentIn]) -> None:
+def check_components(components: list[ComponentIn], method: str = "add") -> None:
     names = [c.name.lower() for c in components]
     if len(set(names)) != len(names):
         raise bad("Each part needs a different name")
+    if method == "weighted":
+        keys = [p.name.lower() for c in components for p in c.parts] + [c.name.lower() for c in components if not c.parts]
+        if len(set(keys)) != len(keys):
+            raise bad("Each score needs a different name (for example CE1, CE2, CA1)")
+        for c in components:
+            if c.max_score != 100:
+                raise bad(f"{c.name}: a block is worked out as a percentage, so it is out of 100")
+            if not c.parts:
+                continue
+            if any(p.weight is None for p in c.parts):
+                raise bad(f"{c.name}: give every score a weight (%)")
+            w = round(sum(p.weight or 0 for p in c.parts), 2)
+            if w != 100:
+                raise bad(f"{c.name}: the weights add up to {w:g}%, they must add up to 100%")
+        return
     total = sum(c.max_score for c in components)
     if total != 100:
         raise bad(f"The parts must add up to 100 (they add up to {total})")
@@ -323,6 +366,12 @@ def assessment_presets():
     return {k: [ComponentOut(**c.model_dump()) for c in preset_components(k)] for k in ASSESSMENT_PRESETS}
 
 
+@router.get("/assessment-presets/all")
+def assessment_presets_all():
+    """Every preset with its method: "add" (marks add up to 100) or "weighted" (blocks of weighted scores, averaged)."""
+    return {k: {"method": preset_method(k), "components": [c.model_dump() for c in preset_components(k)]} for k in [*ASSESSMENT_PRESETS, *WEIGHTED_PRESETS]}
+
+
 @router.get("/schools/{school_id}/assessment-schemes", response_model=list[SchemeOut])
 def list_schemes(school_id: uuid.UUID, user: User = Depends(current_user), db: Session = Depends(get_db)):
     owned_school(db, user, school_id)
@@ -332,8 +381,8 @@ def list_schemes(school_id: uuid.UUID, user: User = Depends(current_user), db: S
 @router.post("/schools/{school_id}/assessment-schemes", response_model=SchemeOut, status_code=201)
 def add_scheme(school_id: uuid.UUID, data: SchemeIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     owned_school(db, user, school_id)
-    check_components(data.components)
-    scheme = AssessmentScheme(school_id=school_id, name=data.name, components=make_components(data.components))
+    check_components(data.components, data.method)
+    scheme = AssessmentScheme(school_id=school_id, name=data.name, method=data.method, components=make_components(data.components))
     db.add(scheme)
     commit_or_conflict(db, "assessment scheme")
     db.refresh(scheme)
@@ -351,8 +400,8 @@ def _own_scheme(db: Session, user: User, scheme_id: uuid.UUID) -> AssessmentSche
 @router.put("/assessment-schemes/{scheme_id}", response_model=SchemeOut)
 def save_scheme(scheme_id: uuid.UUID, data: SchemeIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     scheme = _own_scheme(db, user, scheme_id)
-    check_components(data.components)
-    scheme.name = data.name
+    check_components(data.components, data.method)
+    scheme.name, scheme.method = data.name, data.method
     scheme.components = make_components(data.components)
     commit_or_conflict(db, "assessment scheme")
     db.refresh(scheme)

@@ -33,6 +33,8 @@ backend/alembic/versions/0026_academic_records.py
 backend/alembic/versions/0027_assessment.py
 backend/alembic/versions/0028_score_checks.py
 backend/alembic/versions/0029_score_book.py
+backend/alembic/versions/0030_probation_and_weights.py
+backend/alembic/versions/0031_discipline.py
 backend/app/__init__.py
 backend/app/api/__init__.py
 backend/app/api/academics.py
@@ -49,6 +51,7 @@ backend/app/api/cleaning.py
 backend/app/api/crud.py
 backend/app/api/dashboard.py
 backend/app/api/deps.py
+backend/app/api/discipline.py
 backend/app/api/electives.py
 backend/app/api/family.py
 backend/app/api/growth.py
@@ -60,6 +63,7 @@ backend/app/api/ops.py
 backend/app/api/organisations.py
 backend/app/api/people.py
 backend/app/api/portal.py
+backend/app/api/probation.py
 backend/app/api/profiles.py
 backend/app/api/records.py
 backend/app/api/rights.py
@@ -127,6 +131,7 @@ frontend/src/ClassPage.tsx
 frontend/src/Cleaning.tsx
 frontend/src/DailyTabs.tsx
 frontend/src/Dashboard.tsx
+frontend/src/Discipline.tsx
 frontend/src/Electives.tsx
 frontend/src/FacilitiesTab.tsx
 frontend/src/Family.tsx
@@ -154,6 +159,7 @@ frontend/src/Operations.tsx
 frontend/src/OpsMe.tsx
 frontend/src/OrgPage.tsx
 frontend/src/Passport.tsx
+frontend/src/Probation.tsx
 frontend/src/ProfileCard.tsx
 frontend/src/Profiles.tsx
 frontend/src/RecordEditor.tsx

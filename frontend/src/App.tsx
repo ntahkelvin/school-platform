@@ -22,6 +22,8 @@ import { ApplyPage } from "./Apply";
 import ClassPage from "./ClassPage";
 import { MarksPage, ResultsPage, SheetPage, VerifyPage } from "./Assessment";
 import { CheckPage } from "./ScoreControl";
+import { ProbationCasePage, ProbationPage } from "./Probation";
+import { DisciplineCasePage, DisciplinePage } from "./Discipline";
 import { AnalysisPage } from "./Analysis";
 
 export default function App() {
@@ -89,6 +91,10 @@ export default function App() {
     if (route.page === "results") return <ResultsPage key={route.id} {...common} classId={route.id} />;
     if (route.page === "check") return <CheckPage {...common} />;
     if (route.page === "analysis") return <AnalysisPage key={route.id} {...common} schoolId={route.id} />;
+    if (route.page === "probation") return <ProbationCasePage key={route.id} {...common} caseId={route.id} />;
+    if (route.page === "probation-list") return <ProbationPage key={route.id} {...common} schoolId={route.id} />;
+    if (route.page === "discipline") return <DisciplinePage key={route.id} {...common} schoolId={route.id} />;
+    if (route.page === "discipline-case") return <DisciplineCasePage key={route.id} {...common} caseId={route.id} />;
     if (route.page === "board" && isBoard) return <BoardView {...common} />;
     if (route.page === "staff-record") return <StaffRecordPage key={route.id} {...common} schoolId={route.school} userId={route.id} />;
     if (route.page === "staff-cards") return <IdCardsPage key={`${route.school}${route.id}`} {...common} schoolId={route.school} userId={route.id} />;
@@ -122,6 +128,14 @@ export default function App() {
       return <CheckPage {...common} />;
     case "analysis":
       return <AnalysisPage key={route.id} {...common} schoolId={route.id} />;
+    case "probation":
+      return <ProbationCasePage key={route.id} {...common} caseId={route.id} />;
+    case "probation-list":
+      return <ProbationPage key={route.id} {...common} schoolId={route.id} />;
+    case "discipline":
+      return <DisciplinePage key={route.id} {...common} schoolId={route.id} />;
+    case "discipline-case":
+      return <DisciplineCasePage key={route.id} {...common} caseId={route.id} />;
     case "staff":
       return <StaffHome {...common} />;
     case "staff-record":
